@@ -36,7 +36,7 @@ import (
 type ServerRunOptions struct {
 	AdvertiseAddress net.IP
 
-	CorsAllowedOriginList       []string
+	CorsAllowedOriginList       []string        // cross-origin-resource-shard 跨域allowed list
 	ExternalHost                string
 	MaxRequestsInFlight         int
 	MaxMutatingRequestsInFlight int

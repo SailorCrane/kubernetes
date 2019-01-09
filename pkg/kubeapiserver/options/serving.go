@@ -34,7 +34,7 @@ func NewSecureServingOptions() *genericoptions.SecureServingOptionsWithLoopback 
 		Required:    true,
 		ServerCert: genericoptions.GeneratableKeyCert{
 			PairName:      "apiserver",
-			CertDirectory: "/var/run/kubernetes",
+			CertDirectory: "/var/run/kubernetes",           // cert_directory/pairname.{key, cert}
 		},
 	}
 	return o.WithLoopback()
