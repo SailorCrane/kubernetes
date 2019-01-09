@@ -540,12 +540,21 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 	if err := kubeoptions.DefaultAdvertiseAddress(s.GenericServerRunOptions, s.InsecureServing.DeprecatedInsecureServingOptions); err != nil {
 		return options, err
 	}
+
+    // apiServerServiceIP 是 IPRange中的第一个地址: 用于和Node节点通信
 	serviceIPRange, apiServerServiceIP, err := master.DefaultServiceIPRange(s.ServiceClusterIPRange)
 	if err != nil {
 		return options, fmt.Errorf("error determining service IP ranges: %v", err)
 	}
 	s.ServiceClusterIPRange = serviceIPRange
-	if err := s.SecureServing.MaybeDefaultWithSelfSignedCerts(s.GenericServerRunOptions.AdvertiseAddress.String(), []string{"kubernetes.default.svc", "kubernetes.default", "kubernetes"}, []net.IP{apiServerServiceIP}); err != nil {
+
+    // NOTE: 在这里生成tls相关证书(证书中包含ip和域名)
+    // s.GenericServerRunOptions.AdvertiseAddress : apiserver 对外ip
+    // apiServerServiceIP : apiserver 对内ip(serviceIPRange的第1个ip)
+    // 把这两个ip放到证书中(签发证书时需要ip/host_name/domain_name)
+	if err := s.SecureServing.MaybeDefaultWithSelfSignedCerts(
+        s.GenericServerRunOptions.AdvertiseAddress.String(),
+        []string{"kubernetes.default.svc", "kubernetes.default", "kubernetes"}, []net.IP{apiServerServiceIP}); err != nil {
 		return options, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 

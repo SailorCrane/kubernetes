@@ -279,6 +279,8 @@ func RangeSize(subnet *net.IPNet) int64 {
 // GetIndexedIP returns a net.IP that is subnet.IP + index in the contiguous IP space.
 func GetIndexedIP(subnet *net.IPNet, index int) (net.IP, error) {
 	ip := addIPOffset(bigForIP(subnet.IP), index)
+
+    // 判断是否超出subnet 范围
 	if !subnet.Contains(ip) {
 		return nil, fmt.Errorf("can't generate IP with index %d from subnet. subnet too small. subnet: %q", index, subnet)
 	}

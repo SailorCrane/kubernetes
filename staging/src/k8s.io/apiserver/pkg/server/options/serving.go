@@ -268,9 +268,13 @@ func (s *SecureServingOptions) ApplyTo(config **server.SecureServingInfo) error 
 }
 
 func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress string, alternateDNS []string, alternateIPs []net.IP) error {
+
+    // 如果不使用secure/https, 直接返回
 	if s == nil || (s.BindPort == 0 && s.Listener == nil) {
 		return nil
 	}
+
+    // 如果已经有证书, 不再生成证书
 	keyCert := &s.ServerCert.CertKey
 	if len(keyCert.CertFile) != 0 || len(keyCert.KeyFile) != 0 {
 		return nil
@@ -290,8 +294,10 @@ func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress str
 		}
 	}
 
+    // 都不可以read: 说明key + cert都不存在, 生成key + cert
 	if !canReadCertAndKey {
 		// add either the bind address or localhost to the valid alternates
+        // alternateDNS alternateIPs是cert证书中的字段: 表示服务器的地址和域名
 		bindIP := s.BindAddress.String()
 		if bindIP == "0.0.0.0" {
 			alternateDNS = append(alternateDNS, "localhost")
@@ -299,6 +305,7 @@ func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress str
 			alternateIPs = append(alternateIPs, s.BindAddress)
 		}
 
+        // 生成自签名key + cert
 		if cert, key, err := certutil.GenerateSelfSignedCertKeyWithFixtures(publicAddress, alternateIPs, alternateDNS, s.ServerCert.FixtureDirectory); err != nil {
 			return fmt.Errorf("unable to generate self signed cert: %v", err)
 		} else if len(keyCert.CertFile) > 0 && len(keyCert.KeyFile) > 0 {
