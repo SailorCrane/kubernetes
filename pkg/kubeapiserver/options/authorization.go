@@ -56,12 +56,13 @@ func (s *BuiltInAuthorizationOptions) Validate() []error {
 	}
 
 	allowedModes := sets.NewString(authzmodes.AuthorizationModeChoices...)
-	modes := sets.NewString(s.Modes...)
+	modes := sets.NewString(s.Modes...)     // modes 放入sets中, 实现去重
 	for _, mode := range s.Modes {
 		if !allowedModes.Has(mode) {
 			allErrors = append(allErrors, fmt.Errorf("authorization-mode %q is not a valid mode", mode))
 		}
 		if mode == authzmodes.ModeABAC {
+            // Attribute based access control need PolicyFile : Crane
 			if s.PolicyFile == "" {
 				allErrors = append(allErrors, fmt.Errorf("authorization-mode ABAC's authorization policy file not passed"))
 			}

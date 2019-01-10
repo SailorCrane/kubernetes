@@ -107,6 +107,7 @@ cluster's shared state through which all other components interact.`,
 				return err
 			}
 
+            // TODO: 还没有找到cmd的flags是如何存储到 s := options.NewServerRunOptions()中的
 			// validate options
 			if errs := completedOptions.Validate(); len(errs) != 0 {
 				return utilerrors.NewAggregate(errs)
@@ -116,11 +117,19 @@ cluster's shared state through which all other components interact.`,
 		},
 	}
 
+    // fs/cmd.Flags() 在哪里使用?
 	fs := cmd.Flags()
-	namedFlagSets := s.Flags()
+
+	namedFlagSets := s.Flags()      // 这里设置了很多flags
+
+    // add option to serverOption
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
 	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
 	options.AddCustomGlobalFlags(namedFlagSets.FlagSet("generic"))
+
+    // serverOptions flags ------> cmd.Flags()
+    // 以后cmd就可以使用fs.flags
+    // 但是cmd.Flags 如何设置到s serverOption中的
 	for _, f := range namedFlagSets.FlagSets {
 		fs.AddFlagSet(f)
 	}
@@ -176,6 +185,7 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 		return nil, err
 	}
 
+    // 其中包括handler的创建等
 	kubeAPIServer, err := CreateKubeAPIServer(kubeAPIServerConfig, apiExtensionsServer.GenericAPIServer, admissionPostStartHook)
 	if err != nil {
 		return nil, err
@@ -206,10 +216,12 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 		}
 	}
 
+    // return GenericAPIServer
 	return aggregatorServer.GenericAPIServer, nil
 }
 
 // CreateKubeAPIServer creates and wires a workable kube-apiserver
+// NOTE: 很重要 Master创建, api安装
 func CreateKubeAPIServer(kubeAPIServerConfig *master.Config, delegateAPIServer genericapiserver.DelegationTarget, admissionPostStartHook genericapiserver.PostStartHookFunc) (*master.Master, error) {
 	kubeAPIServer, err := kubeAPIServerConfig.Complete().New(delegateAPIServer)
 	if err != nil {
@@ -287,6 +299,7 @@ func CreateKubeAPIServerConfig(
 		return
 	}
 
+    // etcd连接?
 	if _, port, err := net.SplitHostPort(s.Etcd.StorageConfig.Transport.ServerList[0]); err == nil && port != "0" && len(port) != 0 {
 		if err := utilwait.PollImmediate(etcdRetryInterval, etcdRetryLimit*etcdRetryInterval, preflight.EtcdConnection{ServerList: s.Etcd.StorageConfig.Transport.ServerList}.CheckEtcdServers); err != nil {
 			lastErr = fmt.Errorf("error waiting for etcd connection: %v", err)
@@ -294,6 +307,7 @@ func CreateKubeAPIServerConfig(
 		}
 	}
 
+    // 资源类
 	capabilities.Initialize(capabilities.Capabilities{
 		AllowPrivileged: s.AllowPrivileged,
 		// TODO(vmarmol): Implement support for HostNetworkSources.
@@ -558,6 +572,7 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		return options, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
+    // set ExternalHost
 	if len(s.GenericServerRunOptions.ExternalHost) == 0 {
 		if len(s.GenericServerRunOptions.AdvertiseAddress) > 0 {
 			s.GenericServerRunOptions.ExternalHost = s.GenericServerRunOptions.AdvertiseAddress.String()
@@ -571,6 +586,7 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		klog.Infof("external host was not specified, using %v", s.GenericServerRunOptions.ExternalHost)
 	}
 
+    // 根据authorization 修改authentication选项
 	s.Authentication.ApplyAuthorization(s.Authorization)
 
 	// Use (ServiceAccountSigningKeyFile != "") as a proxy to the user enabling
@@ -589,11 +605,15 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		}
 	}
 
+    // 如果使用jwt: json web token, 私钥为s.ServiceAccountSigningKeyFile
 	if s.ServiceAccountSigningKeyFile != "" && s.Authentication.ServiceAccounts.Issuer != "" {
 		sk, err := certutil.PrivateKeyFromFile(s.ServiceAccountSigningKeyFile)
 		if err != nil {
 			return options, fmt.Errorf("failed to parse service-account-issuer-key-file: %v", err)
 		}
+
+        // 2^ 32 大概 136年
+        // key有效期限
 		if s.Authentication.ServiceAccounts.MaxExpiration != 0 {
 			lowBound := time.Hour
 			upBound := time.Duration(1<<32) * time.Second
@@ -603,6 +623,7 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 			}
 		}
 
+        // jwt generator设置: 包括key, algo, issuer
 		s.ServiceAccountIssuer, err = serviceaccount.JWTTokenGenerator(s.Authentication.ServiceAccounts.Issuer, sk)
 		if err != nil {
 			return options, fmt.Errorf("failed to build token generator: %v", err)
@@ -612,12 +633,17 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 
 	if s.Etcd.EnableWatchCache {
 		klog.V(2).Infof("Initializing cache sizes based on %dMB limit", s.GenericServerRunOptions.TargetRAMMB)
+
+        // map[GroupResource] int: GroupResource到底是什么?
 		sizes := cachesize.NewHeuristicWatchCacheSizes(s.GenericServerRunOptions.TargetRAMMB)
+        // sizes.update(userSpecified)
 		if userSpecified, err := serveroptions.ParseWatchCacheSizes(s.Etcd.WatchCacheSizes); err == nil {
 			for resource, size := range userSpecified {
 				sizes[resource] = size
 			}
 		}
+
+        // save sizes to s.Etcd.WatchCacheSizes
 		s.Etcd.WatchCacheSizes, err = serveroptions.WriteWatchCacheSizes(sizes)
 		if err != nil {
 			return options, err

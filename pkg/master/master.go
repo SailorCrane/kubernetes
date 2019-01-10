@@ -292,11 +292,14 @@ func (cfg *Config) Complete() CompletedConfig {
 // Certain config fields will be set to a default value if unset.
 // Certain config fields must be specified, including:
 //   KubeletClientConfig
+
+// crane: install api在这里处理
 func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget) (*Master, error) {
 	if reflect.DeepEqual(c.ExtraConfig.KubeletClientConfig, kubeletclient.KubeletClientConfig{}) {
 		return nil, fmt.Errorf("Master.New() called with empty config.KubeletClientConfig")
 	}
 
+    // 创建server s, delegationTarget
 	s, err := c.GenericConfig.New("kube-apiserver", delegationTarget)
 	if err != nil {
 		return nil, err
@@ -306,6 +309,7 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		routes.Logs{}.Install(s.Handler.GoRestfulContainer)
 	}
 
+    // 创建master: 内含apiserver
 	m := &Master{
 		GenericAPIServer: s,
 	}
@@ -403,6 +407,7 @@ func (m *Master) InstallAPIs(apiResourceConfigSource serverstorage.APIResourceCo
 	apiGroupsInfo := []genericapiserver.APIGroupInfo{}
 
 	for _, restStorageBuilder := range restStorageProviders {
+        // 每次处理一个group
 		groupName := restStorageBuilder.GroupName()
 		if !apiResourceConfigSource.AnyVersionForGroupEnabled(groupName) {
 			klog.V(1).Infof("Skipping disabled API group %q.", groupName)

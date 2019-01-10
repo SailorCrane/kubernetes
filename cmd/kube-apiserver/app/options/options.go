@@ -44,13 +44,13 @@ type ServerRunOptions struct {
 	Audit                   *genericoptions.AuditOptions
 	Features                *genericoptions.FeatureOptions
 	Admission               *kubeoptions.AdmissionOptions
-	Authentication          *kubeoptions.BuiltInAuthenticationOptions
-	Authorization           *kubeoptions.BuiltInAuthorizationOptions
+	Authentication          *kubeoptions.BuiltInAuthenticationOptions       // 证明你是你
+	Authorization           *kubeoptions.BuiltInAuthorizationOptions        // 授权管理
 	CloudProvider           *kubeoptions.CloudProviderOptions
 	StorageSerialization    *kubeoptions.StorageSerializationOptions
 	APIEnablement           *genericoptions.APIEnablementOptions
 
-	AllowPrivileged           bool
+	AllowPrivileged           bool          // 是否允许启动 privileged docker containers(是docker的一个选项)
 	EnableLogsHandler         bool
 	EventTTL                  time.Duration
 	KubeletConfig             kubeletclient.KubeletClientConfig
@@ -125,6 +125,8 @@ func NewServerRunOptions() *ServerRunOptions {
 // Flags returns flags for a specific APIServer by section name
 func (s *ServerRunOptions) Flags() (fss apiserverflag.NamedFlagSets) {
 	// Add the generic flags.
+
+    // 调用fss.FlagSet() 方法创建FlagSet
 	s.GenericServerRunOptions.AddUniversalFlags(fss.FlagSet("generic"))
 	s.Etcd.AddFlags(fss.FlagSet("etcd"))
 	s.SecureServing.AddFlags(fss.FlagSet("secure serving"))

@@ -309,6 +309,7 @@ func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress str
 		if cert, key, err := certutil.GenerateSelfSignedCertKeyWithFixtures(publicAddress, alternateIPs, alternateDNS, s.ServerCert.FixtureDirectory); err != nil {
 			return fmt.Errorf("unable to generate self signed cert: %v", err)
 		} else if len(keyCert.CertFile) > 0 && len(keyCert.KeyFile) > 0 {
+            // 将生成的key + cert写入文件中
 			if err := certutil.WriteCert(keyCert.CertFile, cert); err != nil {
 				return err
 			}
@@ -317,6 +318,7 @@ func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress str
 			}
 			klog.Infof("Generated self-signed cert (%s, %s)", keyCert.CertFile, keyCert.KeyFile)
 		} else {
+            // 如果没有配置写入文件路径: 那么写入s.ServerCert.GeneratedCert字段
 			tlsCert, err := tls.X509KeyPair(cert, key)
 			if err != nil {
 				return fmt.Errorf("unable to generate self signed cert: %v", err)

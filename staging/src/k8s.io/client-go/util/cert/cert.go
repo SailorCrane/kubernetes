@@ -192,21 +192,25 @@ func GenerateSelfSignedCertKeyWithFixtures(host string, alternateIPs []net.IP, a
 		IsCA:                  true,
 	}
 
+    // ca.der file content
 	caDERBytes, err := x509.CreateCertificate(cryptorand.Reader, &caTemplate, &caTemplate, &caKey.PublicKey, caKey)
 	if err != nil {
 		return nil, nil, err
 	}
 
+    // ca.crt
 	caCertificate, err := x509.ParseCertificate(caDERBytes)
 	if err != nil {
 		return nil, nil, err
 	}
 
+    // 证书私钥生成
 	priv, err := rsa.GenerateKey(cryptorand.Reader, 2048)
 	if err != nil {
 		return nil, nil, err
 	}
 
+    // 证书模板
 	template := x509.Certificate{
 		SerialNumber: big.NewInt(2),
 		Subject: pkix.Name{
@@ -258,6 +262,7 @@ func GenerateSelfSignedCertKeyWithFixtures(host string, alternateIPs []net.IP, a
 		}
 	}
 
+    // 返回生成的key, cert: 因为是自签名, 所以CA从此丢弃.
 	return certBuffer.Bytes(), keyBuffer.Bytes(), nil
 }
 

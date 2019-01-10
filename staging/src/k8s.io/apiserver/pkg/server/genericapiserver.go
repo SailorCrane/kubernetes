@@ -235,6 +235,7 @@ type preparedGenericAPIServer struct {
 }
 
 // PrepareRun does post API installation setup steps.
+// 在api install之后
 func (s *GenericAPIServer) PrepareRun() preparedGenericAPIServer {
 	if s.swaggerConfig != nil {
 		routes.Swagger{Config: s.swaggerConfig}.Install(s.Handler.GoRestfulContainer)
@@ -261,6 +262,7 @@ func (s *GenericAPIServer) PrepareRun() preparedGenericAPIServer {
 // Run spawns the secure http server. It only returns if stopCh is closed
 // or the secure port cannot be listened on initially.
 func (s preparedGenericAPIServer) Run(stopCh <-chan struct{}) error {
+    // run 关键代码在其中
 	err := s.NonBlockingRun(stopCh)
 	if err != nil {
 		return err
@@ -268,7 +270,9 @@ func (s preparedGenericAPIServer) Run(stopCh <-chan struct{}) error {
 
 	<-stopCh
 
-	err = s.RunPreShutdownHooks()
+    // 下面都是关闭前的准备
+
+	err = s.RunPreShutdownHooks()       // 关闭前的回调
 	if err != nil {
 		return err
 	}
@@ -297,6 +301,7 @@ func (s preparedGenericAPIServer) NonBlockingRun(stopCh <-chan struct{}) error {
 	// Use an internal stop channel to allow cleanup of the listeners on error.
 	internalStopCh := make(chan struct{})
 
+    // generic server what's handler
 	if s.SecureServingInfo != nil && s.Handler != nil {
 		if err := s.SecureServingInfo.Serve(s.Handler, s.ShutdownTimeout, internalStopCh); err != nil {
 			close(internalStopCh)
@@ -308,13 +313,14 @@ func (s preparedGenericAPIServer) NonBlockingRun(stopCh <-chan struct{}) error {
 	// responsibility of the caller to close the provided channel to
 	// ensure cleanup.
 	go func() {
+        // 如果外部收到stop信号, close(internalStopCh), internalStopCh会导致SecureServingInfo.Serve()停止
 		<-stopCh
 		close(internalStopCh)
 		s.HandlerChainWaitGroup.Wait()
 		close(auditStopCh)
 	}()
 
-	s.RunPostStartHooks(stopCh)
+	s.RunPostStartHooks(stopCh)     // 服务器启动后回调: post start
 
 	if _, err := systemd.SdNotify(true, "READY=1\n"); err != nil {
 		klog.Errorf("Unable to send systemd daemon successful start message: %v\n", err)
@@ -325,6 +331,7 @@ func (s preparedGenericAPIServer) NonBlockingRun(stopCh <-chan struct{}) error {
 
 // installAPIResources is a private method for installing the REST storage backing each api groupversionresource
 func (s *GenericAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *APIGroupInfo) error {
+    // 每个group中有很多api resource
 	openAPIGroupModels, err := s.getOpenAPIModelsForGroup(apiPrefix, apiGroupInfo)
 	if err != nil {
 		return fmt.Errorf("unable to get openapi models for group %v: %v", apiPrefix, err)

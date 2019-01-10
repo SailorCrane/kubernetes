@@ -70,6 +70,7 @@ type APIServerHandler struct {
 // It is normally used to apply filtering like authentication and authorization
 type HandlerChainBuilderFn func(apiHandler http.Handler) http.Handler
 
+// crane: handler chain, 终于跟踪到这里了
 func NewAPIServerHandler(name string, s runtime.NegotiatedSerializer, handlerChainBuilder HandlerChainBuilderFn, notFoundHandler http.Handler) *APIServerHandler {
 	nonGoRestfulMux := mux.NewPathRecorderMux(name)
 	if notFoundHandler != nil {

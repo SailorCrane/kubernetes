@@ -101,6 +101,7 @@ func NewBuiltInAuthenticationOptions() *BuiltInAuthenticationOptions {
 }
 
 func (s *BuiltInAuthenticationOptions) WithAll() *BuiltInAuthenticationOptions {
+    // link method(which return it's self) :by Crane
 	return s.
 		WithAnonymous().
 		WithBootstrapToken().
@@ -404,6 +405,7 @@ func (o *BuiltInAuthenticationOptions) ApplyTo(c *genericapiserver.Config) error
 }
 
 // ApplyAuthorization will conditionally modify the authentication options based on the authorization options
+// 根据authorization 修改authentication
 func (o *BuiltInAuthenticationOptions) ApplyAuthorization(authorization *BuiltInAuthorizationOptions) {
 	if o == nil || authorization == nil || o.Anonymous == nil {
 		return
@@ -412,6 +414,7 @@ func (o *BuiltInAuthenticationOptions) ApplyAuthorization(authorization *BuiltIn
 	// authorization ModeAlwaysAllow cannot be combined with AnonymousAuth.
 	// in such a case the AnonymousAuth is stomped to false and you get a message
 	if o.Anonymous.Allow && sets.NewString(authorization.Modes...).Has(authzmodes.ModeAlwaysAllow) {
+        // 如果authorization设置了AlwaysAllow, 置authentication.anonymous = false   // 此时不允许匿名登录
 		klog.Warningf("AnonymousAuth is not allowed with the AlwaysAllow authorizer. Resetting AnonymousAuth to false. You should use a different authorizer")
 		o.Anonymous.Allow = false
 	}
