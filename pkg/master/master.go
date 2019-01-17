@@ -474,6 +474,8 @@ func (n nodeAddressProvider) externalAddresses() ([]string, error) {
 }
 
 func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
+    // Crane: enabled resource: used by InstallAPIs
+
 	ret := serverstorage.NewResourceConfig()
 	// NOTE: GroupVersions listed here will be enabled by default. Don't put alpha versions in the list.
 	ret.EnableVersions(

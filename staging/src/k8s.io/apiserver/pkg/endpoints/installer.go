@@ -89,6 +89,7 @@ var toDiscoveryKubeVerb = map[string]string{
 }
 
 // Install handlers for API resources.
+// 将storage 映射为go-restful 的handler等
 func (a *APIInstaller) Install() ([]metav1.APIResource, *restful.WebService, []error) {
 	var apiResources []metav1.APIResource
 	var errors []error
@@ -97,12 +98,16 @@ func (a *APIInstaller) Install() ([]metav1.APIResource, *restful.WebService, []e
 	// Register the paths in a deterministic (sorted) order to get a deterministic swagger spec.
 	paths := make([]string, len(a.group.Storage))
 	var i int = 0
+
+    // a.group.Stroage中是groupVersion的所有版本
+    // 不同的path是不同的版本
 	for path := range a.group.Storage {
 		paths[i] = path
 		i++
 	}
 	sort.Strings(paths)
 	for _, path := range paths {
+        // 将handler, path, ws关联起来(path, ws是go restful中的)
 		apiResource, err := a.registerResourceHandlers(path, a.group.Storage[path], ws)
 		if err != nil {
 			errors = append(errors, fmt.Errorf("error in registering resource: %s, %v", path, err))
@@ -135,7 +140,8 @@ func (a *APIInstaller) newWebService() *restful.WebService {
 // object. If the storage object is a subresource and has an override supplied for it, it returns
 // the group version kind supplied in the override.
 func GetResourceKind(groupVersion schema.GroupVersion, storage rest.Storage, typer runtime.ObjectTyper) (schema.GroupVersionKind, error) {
-	// Let the storage tell us exactly what GVK it has
+    // 获取storage 的version和kind
+	// Let the storage tell us exactly what GVK(group version kind) it has
 	if gvkProvider, ok := storage.(rest.GroupVersionKindProvider); ok {
 		return gvkProvider.GroupVersionKind(groupVersion), nil
 	}

@@ -53,9 +53,9 @@ import (
 
 // Info about an API group.
 type APIGroupInfo struct {
-	PrioritizedVersions []schema.GroupVersion
+	PrioritizedVersions []schema.GroupVersion       // 所有的version(list)
 	// Info about the resources in this group. It's a map from version to resource to the storage.
-	VersionedResourcesStorageMap map[string]map[string]rest.Storage
+	VersionedResourcesStorageMap map[string]map[string]rest.Storage     // 所有version和storage的映射
 	// OptionsExternalVersion controls the APIVersion used for common objects in the
 	// schema like api.Status, api.DeleteOptions, and metav1.ListOptions. Other implementors may
 	// define a version "v1beta1" but want to use the Kubernetes "v1" internal objects.
@@ -336,6 +336,8 @@ func (s *GenericAPIServer) installAPIResources(apiPrefix string, apiGroupInfo *A
 	if err != nil {
 		return fmt.Errorf("unable to get openapi models for group %v: %v", apiPrefix, err)
 	}
+
+    // 遍历处理所有的version
 	for _, groupVersion := range apiGroupInfo.PrioritizedVersions {
 		if len(apiGroupInfo.VersionedResourcesStorageMap[groupVersion.Version]) == 0 {
 			klog.Warningf("Skipping API %v because it has no resources.", groupVersion)
@@ -417,6 +419,7 @@ func (s *GenericAPIServer) InstallAPIGroup(apiGroupInfo *APIGroupInfo) error {
 }
 
 func (s *GenericAPIServer) getAPIGroupVersion(apiGroupInfo *APIGroupInfo, groupVersion schema.GroupVersion, apiPrefix string) *genericapi.APIGroupVersion {
+    // 从apiGroupInfo 中获取特定version的ApiGroupVersion
 	storage := make(map[string]rest.Storage)
 	for k, v := range apiGroupInfo.VersionedResourcesStorageMap[groupVersion.Version] {
 		storage[strings.ToLower(k)] = v
