@@ -75,11 +75,14 @@ func NewCmdReset(in io.Reader, out io.Writer) *cobra.Command {
 	options.AddIgnorePreflightErrorsFlag(cmd.PersistentFlags(), &ignorePreflightErrors)
 	options.AddKubeConfigFlag(cmd.PersistentFlags(), &kubeConfigFile)
 
+    // StringVar 指定参数用法和默认参数
+    // 默认参数被放置到certDir中
 	cmd.PersistentFlags().StringVar(
 		&certsDir, "cert-dir", kubeadmapiv1beta1.DefaultCertificatesDir,
 		"The path to the directory where the certificates are stored. If specified, clean this directory.",
 	)
 
+    // 默认参数kubeadmapiv1beta1.DefaultCRISocket被放置到criSocketPath中
 	cmd.PersistentFlags().StringVar(
 		&criSocketPath, "cri-socket", kubeadmapiv1beta1.DefaultCRISocket,
 		"The path to the CRI socket to use with crictl when cleaning up containers.",
@@ -115,6 +118,8 @@ func NewReset(in io.Reader, ignorePreflightErrors sets.String, forceReset bool, 
 	}
 
 	fmt.Println("[preflight] running pre-flight checks")
+
+    // preflight 运行前check : 这里检查用户是否为root
 	if err := preflight.RunRootCheckOnly(ignorePreflightErrors); err != nil {
 		return nil, err
 	}
@@ -126,6 +131,7 @@ func NewReset(in io.Reader, ignorePreflightErrors sets.String, forceReset bool, 
 }
 
 // Run reverts any changes made to this host by "kubeadm init" or "kubeadm join".
+// 主要是清除工作:
 func (r *Reset) Run(out io.Writer, client clientset.Interface) error {
 	var dirsToClean []string
 	// Only clear etcd data when using local etcd.
@@ -142,7 +148,7 @@ func (r *Reset) Run(out io.Writer, client clientset.Interface) error {
 
 	// Try to stop the kubelet service
 	klog.V(1).Infof("[reset] getting init system")
-	initSystem, err := initsystem.GetInitSystem()
+	initSystem, err := initsystem.GetInitSystem()       // linux系统的init
 	if err != nil {
 		klog.Warningln("[reset] the kubelet service could not be stopped by kubeadm. Unable to detect a supported init system!")
 		klog.Warningln("[reset] please ensure kubelet is stopped manually")

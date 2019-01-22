@@ -68,6 +68,8 @@ func runPreflightMaster(c workflow.RunData) error {
 	}
 
 	fmt.Println("[preflight] Running pre-flight checks")
+
+    // 检查master节点
 	if err := preflight.RunInitMasterChecks(utilsexec.New(), data.Cfg(), data.IgnorePreflightErrors()); err != nil {
 		return err
 	}

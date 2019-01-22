@@ -415,6 +415,7 @@ func EtcdSupportedVersion(versionString string) (*version.Version, error) {
 
 // GetStaticPodDirectory returns the location on the disk where the Static Pod should be present
 func GetStaticPodDirectory() string {
+    // manifest目录中存放的是pod yaml
 	return filepath.Join(KubernetesDir, ManifestsSubDirName)
 }
 

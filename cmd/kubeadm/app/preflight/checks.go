@@ -871,6 +871,8 @@ func RunInitMasterChecks(execer utilsexec.Interface, cfg *kubeadmapi.InitConfigu
 	}
 
 	manifestsDir := filepath.Join(kubeadmconstants.KubernetesDir, kubeadmconstants.ManifestsSubDirName)
+
+    // 定义一些列check
 	checks := []Checker{
 		NumCPUCheck{NumCPU: kubeadmconstants.MasterNumCPU},
 		KubernetesVersionCheck{KubernetesVersion: cfg.KubernetesVersion, KubeadmVersion: kubeadmversion.Get().GitVersion},
@@ -878,10 +880,13 @@ func RunInitMasterChecks(execer utilsexec.Interface, cfg *kubeadmapi.InitConfigu
 		PortOpenCheck{port: int(cfg.LocalAPIEndpoint.BindPort)},
 		PortOpenCheck{port: 10251},
 		PortOpenCheck{port: 10252},
+
+        // 检测manifestDir目录中, 是否包含某文件: apiserver, scheduler, kubelet, etcd
 		FileAvailableCheck{Path: kubeadmconstants.GetStaticPodFilepath(kubeadmconstants.KubeAPIServer, manifestsDir)},
 		FileAvailableCheck{Path: kubeadmconstants.GetStaticPodFilepath(kubeadmconstants.KubeControllerManager, manifestsDir)},
 		FileAvailableCheck{Path: kubeadmconstants.GetStaticPodFilepath(kubeadmconstants.KubeScheduler, manifestsDir)},
 		FileAvailableCheck{Path: kubeadmconstants.GetStaticPodFilepath(kubeadmconstants.Etcd, manifestsDir)},
+
 		HTTPProxyCheck{Proto: "https", Host: cfg.LocalAPIEndpoint.AdvertiseAddress},
 		HTTPProxyCIDRCheck{Proto: "https", CIDR: cfg.Networking.ServiceSubnet},
 		HTTPProxyCIDRCheck{Proto: "https", CIDR: cfg.Networking.PodSubnet},
@@ -1032,7 +1037,7 @@ func addCommonChecks(execer utilsexec.Interface, cfg kubeadmapi.CommonConfigurat
 // RunRootCheckOnly initializes checks slice of structs and call RunChecks
 func RunRootCheckOnly(ignorePreflightErrors sets.String) error {
 	checks := []Checker{
-		IsPrivilegedUserCheck{},
+		IsPrivilegedUserCheck{},        // root 用户check
 	}
 
 	return RunChecks(checks, os.Stderr, ignorePreflightErrors)
@@ -1064,6 +1069,7 @@ func RunChecks(checks []Checker, ww io.Writer, ignorePreflightErrors sets.String
 		name := c.Name()
 		warnings, errs := c.Check()
 
+        // 如果忽略列表中有这个check, 将error降为warnings
 		if setHasItemOrAll(ignorePreflightErrors, name) {
 			// Decrease severity of errors to warnings for this check
 			warnings = append(warnings, errs...)

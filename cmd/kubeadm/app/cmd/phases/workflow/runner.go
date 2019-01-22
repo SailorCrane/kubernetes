@@ -41,7 +41,7 @@ type RunnerOptions struct {
 }
 
 // RunData defines the data shared among all the phases included in the workflow, that is any type.
-type RunData = interface{}
+type RunData interface{}
 
 // Runner implements management of composable kubeadm workflows.
 type Runner struct {
@@ -341,8 +341,8 @@ func (e *Runner) BindToCommand(cmd *cobra.Command) {
 				}
 
 				// overrides the command triggering the Runner using the phaseCmd
-				e.runCmd = cmd
-				e.Options.FilterPhases = []string{phaseSelector}
+                e.runCmd = cmd      // NOTE: override runCmd, set as current parnet
+                e.Options.FilterPhases = []string{phaseSelector}        // NOTE: current selector
 				if err := e.Run(); err != nil {
 					fmt.Fprintln(os.Stderr, err)
 					os.Exit(1)

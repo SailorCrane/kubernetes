@@ -167,10 +167,11 @@ func NewCmdInit(out io.Writer, initOptions *initOptions) *cobra.Command {
 	})
 
 	// initialize the workflow runner with the list of phases
+    // workflow phase: init时执行的各个阶段, 分别执行Phase中的runner
 	initRunner.AppendPhase(phases.NewPreflightMasterPhase())
 	initRunner.AppendPhase(phases.NewKubeletStartPhase())
-	initRunner.AppendPhase(phases.NewCertsPhase())
-	initRunner.AppendPhase(phases.NewKubeConfigPhase())
+	initRunner.AppendPhase(phases.NewCertsPhase())              // 打印cert目录路径, cert应该是在配置阶段准备好的
+	initRunner.AppendPhase(phases.NewKubeConfigPhase())         // 打印kubeconfig Dir
 	initRunner.AppendPhase(phases.NewControlPlanePhase())
 	initRunner.AppendPhase(phases.NewEtcdPhase())
 	initRunner.AppendPhase(phases.NewWaitControlPlanePhase())
@@ -281,6 +282,7 @@ func newInitOptions() *initOptions {
 // newInitData returns a new initData struct to be used for the execution of the kubeadm init workflow.
 // This func takes care of validating initOptions passed to the command, and then it converts
 // options into the internal InitConfiguration type that is used as input all the phases in the kubeadm init workflow
+// kubeadm的 所有参数都在这里配置
 func newInitData(cmd *cobra.Command, options *initOptions, out io.Writer) (initData, error) {
 	// Re-apply defaults to the public kubeadm API (this will set only values not exposed/not set as a flags)
 	kubeadmscheme.Scheme.Default(options.externalcfg)
