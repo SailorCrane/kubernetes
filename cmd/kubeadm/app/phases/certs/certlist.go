@@ -174,10 +174,12 @@ func (m CertificateMap) CertTree() (CertificateTree, error) {
 
 	for _, cert := range m {
 		if cert.CAName == "" {
+            // 处理CA: 加入caMap
 			if _, ok := caMap[cert]; !ok {
 				caMap[cert] = []*KubeadmCert{}
 			}
 		} else {
+            // 处理证书: 获取证书的CA
 			ca, ok := m[cert.CAName]
 			if !ok {
 				return nil, errors.Errorf("certificate %q references unknown CA %q", cert.Name, cert.CAName)

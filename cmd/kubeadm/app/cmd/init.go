@@ -171,9 +171,9 @@ func NewCmdInit(out io.Writer, initOptions *initOptions) *cobra.Command {
 	initRunner.AppendPhase(phases.NewPreflightMasterPhase())
 	initRunner.AppendPhase(phases.NewKubeletStartPhase())
 	initRunner.AppendPhase(phases.NewCertsPhase())              // 打印cert目录路径, cert应该是在配置阶段准备好的
-	initRunner.AppendPhase(phases.NewKubeConfigPhase())         // 打印kubeconfig Dir
-	initRunner.AppendPhase(phases.NewControlPlanePhase())
-	initRunner.AppendPhase(phases.NewEtcdPhase())
+	initRunner.AppendPhase(phases.NewKubeConfigPhase())         // 先打印cert Dir, 然后在subphase中创建ca和响应cert
+	initRunner.AppendPhase(phases.NewControlPlanePhase())       // 创建apiserver, scheduler, controller所需的static pod文件(在phases中)
+	initRunner.AppendPhase(phases.NewEtcdPhase())               // 创建etcd
 	initRunner.AppendPhase(phases.NewWaitControlPlanePhase())
 	initRunner.AppendPhase(phases.NewUploadConfigPhase())
 	initRunner.AppendPhase(phases.NewMarkControlPlanePhase())

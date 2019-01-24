@@ -69,8 +69,8 @@ func NewCertsPhase() workflow.Phase {
 	return workflow.Phase{
 		Name:   "certs",
 		Short:  "Certificate generation",
-		Phases: newCertSubPhases(),
-		Run:    runCerts,
+        Phases: newCertSubPhases(),        // phases's phase: 在当前phase的Run执行之后才能执行
+		Run:    runCerts,                  // Run句柄
 		Long:   cmdutil.MacroCommandLongDescription,
 	}
 }
@@ -97,7 +97,9 @@ func newCertSubPhases() []workflow.Phase {
 	subPhases = append(subPhases, allPhase)
 
 	certTree, _ := certsphase.GetDefaultCertList().AsMap().CertTree()
+    // certTree:   [ca] cert_array : 一个ca和它要认证的所有证书
 
+    // 把ca和cert的生成都加到phase中
 	for ca, certList := range certTree {
 		caPhase := newCertSubPhase(ca, runCAPhase(ca))
 		subPhases = append(subPhases, caPhase)
@@ -110,6 +112,7 @@ func newCertSubPhases() []workflow.Phase {
 	}
 
 	// SA creates the private/public key pair, which doesn't use x509 at all
+    // what does this do
 	saPhase := workflow.Phase{
 		Name:  "sa",
 		Short: "Generates a private key for signing service account tokens along with its public key",
@@ -269,6 +272,7 @@ func runCertPhase(cert *certsphase.KubeadmCert, caCert *certsphase.KubeadmCert) 
 				return errors.Wrapf(err, "couldn't load CA certificate %s", caCert.Name)
 			}
 
+            // check cert by ca
 			if err := certData.CheckSignatureFrom(caCertData); err != nil {
 				return errors.Wrapf(err, "[certs] certificate %s not signed by CA certificate %s", cert.BaseName, caCert.BaseName)
 			}
@@ -298,6 +302,7 @@ func runCertPhase(cert *certsphase.KubeadmCert, caCert *certsphase.KubeadmCert) 
 		defer func() { cfg.CertificatesDir = data.CertificateDir() }()
 
 		// create the new certificate (or use existing)
+        // 创建cert
 		return certsphase.CreateCertAndKeyFilesWithCA(cert, caCert, cfg)
 	}
 }

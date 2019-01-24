@@ -79,7 +79,7 @@ type Runner struct {
 // TODO: If we ever decide to get more sophisticated we can swap this type with a well defined dag or tree library.
 type phaseRunner struct {
 	// Phase provide access to the phase implementation
-	Phase
+	Phase           // 类似于继承? 直接调用phase中的属性和方法
 
 	// provide access to the parent phase in the workflow managed by the Runner.
 	parent *phaseRunner
@@ -191,7 +191,7 @@ func (e *Runner) InitData() (RunData, error) {
 
 // Run the kubeadm composable kubeadm workflows.
 func (e *Runner) Run() error {
-	e.prepareForExecution()
+    e.prepareForExecution()         // NOTE: 在这里处理phases, 把phases及子孙添加到phaseRunners
 
 	// determine which phase should be run according to RunnerOptions
 	phaseRunFlags, err := e.computePhaseRunFlags()
@@ -431,6 +431,8 @@ func (e *Runner) prepareForExecution() {
 		}
 
 		// add phases to the execution list
+        // 对每个phase, 添加一个phaseRunner, 并且把phase中的phases字段也通过phaseRunner添加到runner中
+        // 执行顺序: 先run func, 然后是phases(先序深度优先)
 		addPhaseRunner(e, parentRunner, phase)
 	}
 }
@@ -449,6 +451,7 @@ func addPhaseRunner(e *Runner, parentRunner *phaseRunner, phase Phase) {
 	}
 
 	// creates the phaseRunner
+    // 对phase的包装
 	currentRunner := &phaseRunner{
 		Phase:         phase,
 		parent:        parentRunner,
@@ -463,6 +466,7 @@ func addPhaseRunner(e *Runner, parentRunner *phaseRunner, phase Phase) {
 
 	// iterate for the nested, ordered list of phases, thus storing
 	// phases in the expected executing order (child phase are stored immediately after their parent phase).
+    // 递归添加当前phase的sub phase到顶级runner
 	for _, childPhase := range phase.Phases {
 		addPhaseRunner(e, currentRunner, childPhase)
 	}
