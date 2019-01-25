@@ -89,7 +89,7 @@ func runEtcdPhaseLocal() func(c workflow.RunData) error {
 		}
 		cfg := data.Cfg()
 
-        // 如果没有指定外部etcd: 已经提前创建好的etcd
+        // 如果没有指定外部etcd(已经提前创建好的etcd)的情况下, 才创建etcd
 		// Add etcd static pod spec only if external etcd is not configured
 		if cfg.Etcd.External == nil {
 			fmt.Printf("[etcd] Creating static Pod manifest for local etcd in %q\n", data.ManifestDir())

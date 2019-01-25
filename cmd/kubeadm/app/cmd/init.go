@@ -173,12 +173,12 @@ func NewCmdInit(out io.Writer, initOptions *initOptions) *cobra.Command {
 	initRunner.AppendPhase(phases.NewCertsPhase())              // 打印cert目录路径, cert应该是在配置阶段准备好的
 	initRunner.AppendPhase(phases.NewKubeConfigPhase())         // 先打印cert Dir, 然后在subphase中创建ca和响应cert
 	initRunner.AppendPhase(phases.NewControlPlanePhase())       // 创建apiserver, scheduler, controller所需的static pod文件(在phases中)
-	initRunner.AppendPhase(phases.NewEtcdPhase())               // 创建etcd
-	initRunner.AppendPhase(phases.NewWaitControlPlanePhase())
-	initRunner.AppendPhase(phases.NewUploadConfigPhase())
-	initRunner.AppendPhase(phases.NewMarkControlPlanePhase())
-	initRunner.AppendPhase(phases.NewBootstrapTokenPhase())
-	initRunner.AppendPhase(phases.NewAddonPhase())
+	initRunner.AppendPhase(phases.NewEtcdPhase())               // 创建etcd(在没有配置外部etcd下)
+	initRunner.AppendPhase(phases.NewWaitControlPlanePhase())   // 没干啥玩意
+	initRunner.AppendPhase(phases.NewUploadConfigPhase())       // 把kubeadm和kubelet的配置文件上传到ConfigMap
+	initRunner.AppendPhase(phases.NewMarkControlPlanePhase())   // 设置master node的label
+	initRunner.AppendPhase(phases.NewBootstrapTokenPhase())     // 输出join token: 不太重要, 需要时再看
+	initRunner.AppendPhase(phases.NewAddonPhase())              // 安装coredns, kube-proxy
 
 	// sets the data builder function, that will be used by the runner
 	// both when running the entire workflow or single phases
