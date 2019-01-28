@@ -33,6 +33,8 @@ import (
 )
 
 func main() {
+    // cmd中有 "cloud-controller-manager", "kube-controller-manager", "controller-manager"
+    // 猜测controller-manager应该是两者共用模块
 	rand.Seed(time.Now().UnixNano())
 
 	command := app.NewControllerManagerCommand()

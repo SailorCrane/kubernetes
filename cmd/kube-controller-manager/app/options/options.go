@@ -394,14 +394,16 @@ func (s KubeControllerManagerOptions) Config(allControllers []string, disabledBy
 		return nil, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
+    // 连接apiserver的config
 	kubeconfig, err := clientcmd.BuildConfigFromFlags(s.Master, s.Kubeconfig)
 	if err != nil {
 		return nil, err
 	}
 	kubeconfig.ContentConfig.ContentType = s.Generic.ClientConnection.ContentType
-	kubeconfig.QPS = s.Generic.ClientConnection.QPS
-	kubeconfig.Burst = int(s.Generic.ClientConnection.Burst)
+	kubeconfig.QPS = s.Generic.ClientConnection.QPS                 // 平均每秒请求数量
+	kubeconfig.Burst = int(s.Generic.ClientConnection.Burst)        // 瞬时请求数量
 
+    // 创建apiserver客户端
 	client, err := clientset.NewForConfig(restclient.AddUserAgent(kubeconfig, KubeControllerManagerUserAgent))
 	if err != nil {
 		return nil, err
@@ -410,8 +412,11 @@ func (s KubeControllerManagerOptions) Config(allControllers []string, disabledBy
 	// shallow copy, do not modify the kubeconfig.Timeout.
 	config := *kubeconfig
 	config.Timeout = s.Generic.LeaderElection.RenewDeadline.Duration
+
+    // controller client集群? 用来选举谁? 选举controller-manager?
 	leaderElectionClient := clientset.NewForConfigOrDie(restclient.AddUserAgent(&config, "leader-election"))
 
+    // apiserver的观察者?
 	eventRecorder := createRecorder(client, KubeControllerManagerUserAgent)
 
 	c := &kubecontrollerconfig.Config{
@@ -427,6 +432,7 @@ func (s KubeControllerManagerOptions) Config(allControllers []string, disabledBy
 	return c, nil
 }
 
+// 猜测: 创建event record, 用于接收apiserver事件(相当于apiserver的观察者)
 func createRecorder(kubeClient clientset.Interface, userAgent string) record.EventRecorder {
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartLogging(klog.Infof)

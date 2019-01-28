@@ -99,6 +99,8 @@ controller, and serviceaccounts controller.`,
 			verflag.PrintAndExitIfRequested()
 			utilflag.PrintFlags(cmd.Flags())
 
+            // option ------> config(包含apiserver信息)
+            // KnownControllers中包含所有的controller
 			c, err := s.Config(KnownControllers(), ControllersDisabledByDefault.List())
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -166,6 +168,8 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 
 	// Start the controller manager HTTP server
 	// unsecuredMux is the handler for these controller *after* authn/authz filters have been applied
+    // c.SecureServing.Serve()启动了一个HTTP服务器
+    // 这个服务器的作用是?
 	var unsecuredMux *mux.PathRecorderMux
 	if c.SecureServing != nil {
 		unsecuredMux = genericcontrollermanager.NewBaseHandler(&c.ComponentConfig.Generic.Debugging, checks...)
@@ -209,6 +213,8 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		}
 		saTokenControllerInitFunc := serviceAccountTokenControllerStarter{rootClientBuilder: rootClientBuilder}.startServiceAccountTokenController
 
+        // 启动NewControllerInitializers()中所有的controller: node, endpoint等
+        // 每个controller中有一个go 协程
 		if err := StartControllers(controllerContext, saTokenControllerInitFunc, NewControllerInitializers(controllerContext.LoopMode), unsecuredMux); err != nil {
 			klog.Fatalf("error starting controllers: %v", err)
 		}
@@ -334,6 +340,7 @@ func IsControllerEnabled(name string, disabledByDefaultControllers sets.String, 
 // The bool indicates whether the controller was enabled.
 type InitFunc func(ctx ControllerContext) (debuggingHandler http.Handler, enabled bool, err error)
 
+// 返回controller的名字列表
 func KnownControllers() []string {
 	ret := sets.StringKeySet(NewControllerInitializers(IncludeCloudLoops))
 
