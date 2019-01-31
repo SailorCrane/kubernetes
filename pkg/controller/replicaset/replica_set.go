@@ -84,7 +84,7 @@ type ReplicaSetController struct {
 	// It resumes normal action after observing the watch events for them.
 	burstReplicas int
 	// To allow injection of syncReplicaSet for testing.
-	syncHandler func(rsKey string) error
+	syncHandler func(rsKey string) error        // 处理句柄
 
 	// A TTLCache of pod creates/deletes each rc expects to see.
 	expectations *controller.UIDTrackingControllerExpectations
@@ -138,6 +138,8 @@ func NewBaseController(rsInformer appsinformers.ReplicaSetInformer, podInformer 
 		queue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), queueName),
 	}
 
+    // NOTE: rcs相关事件处理回调都在这里
+    // 添加rs事件处理回调
 	rsInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    rsc.enqueueReplicaSet,
 		UpdateFunc: rsc.updateRS,
@@ -149,6 +151,7 @@ func NewBaseController(rsInformer appsinformers.ReplicaSetInformer, podInformer 
 	rsc.rsLister = rsInformer.Lister()
 	rsc.rsListerSynced = rsInformer.Informer().HasSynced
 
+    // 添加pod事件处理回调: 添加, 更新, 删除等函数指针
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: rsc.addPod,
 		// This invokes the ReplicaSet for every pod change, eg: host assignment. Though this might seem like
@@ -441,6 +444,7 @@ func (rsc *ReplicaSetController) processNextWorkItem() bool {
 	}
 	defer rsc.queue.Done(key)
 
+    // rsc.syncHandler is rsc.syncReplicaSet
 	err := rsc.syncHandler(key.(string))
 	if err == nil {
 		rsc.queue.Forget(key)
@@ -568,6 +572,9 @@ func (rsc *ReplicaSetController) manageReplicas(filteredPods []*v1.Pod, rs *apps
 // syncReplicaSet will sync the ReplicaSet with the given key if it has had its expectations fulfilled,
 // meaning it did not expect to see any more of its pods created or deleted. This function is not meant to be
 // invoked concurrently with the same key.
+// syncHandler
+// 问: 这里难道只处理pod事件, 不处理rs事件?: 回溯查看rs事件处理回调进行分析.如何区分pod 和rs
+// 答: 这里传入的是一个key: 包含(rs, pod)信息 (猜测)
 func (rsc *ReplicaSetController) syncReplicaSet(key string) error {
 
 	startTime := time.Now()
@@ -575,10 +582,13 @@ func (rsc *ReplicaSetController) syncReplicaSet(key string) error {
 		klog.V(4).Infof("Finished syncing %v %q (%v)", rsc.Kind, key, time.Since(startTime))
 	}()
 
+    // key 包含namespace和对象名字
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		return err
 	}
+
+    // 根据name获取对象rs: replica set
 	rs, err := rsc.rsLister.ReplicaSets(namespace).Get(name)
 	if errors.IsNotFound(err) {
 		klog.V(4).Infof("%v %v has been deleted", rsc.Kind, key)
@@ -589,6 +599,7 @@ func (rsc *ReplicaSetController) syncReplicaSet(key string) error {
 		return err
 	}
 
+    // rsNeedsSync是为了限流?
 	rsNeedsSync := rsc.expectations.SatisfiedExpectations(key)
 	selector, err := metav1.LabelSelectorAsSelector(rs.Spec.Selector)
 	if err != nil {
@@ -603,7 +614,9 @@ func (rsc *ReplicaSetController) syncReplicaSet(key string) error {
 	if err != nil {
 		return err
 	}
+
 	// Ignore inactive pods.
+    // filteredPods是待处理的pod, 过滤inactive Pod, 只加入active Pod
 	var filteredPods []*v1.Pod
 	for _, pod := range allPods {
 		if controller.IsPodActive(pod) {
@@ -613,6 +626,7 @@ func (rsc *ReplicaSetController) syncReplicaSet(key string) error {
 
 	// NOTE: filteredPods are pointing to objects from cache - if you need to
 	// modify them, you need to copy it first.
+    // Crane: do what for filteredPods?
 	filteredPods, err = rsc.claimPods(rs, selector, filteredPods)
 	if err != nil {
 		return err

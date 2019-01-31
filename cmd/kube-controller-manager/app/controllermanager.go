@@ -187,6 +187,7 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		}
 	}
 
+    // 在leader election成功后, OnStartedLeading 回调执行这里
 	run := func(ctx context.Context) {
 		rootClientBuilder := controller.SimpleControllerClientBuilder{
 			ClientConfig: c.Kubeconfig,
@@ -255,7 +256,7 @@ func Run(c *config.CompletedConfig, stopCh <-chan struct{}) error {
 		RenewDeadline: c.ComponentConfig.Generic.LeaderElection.RenewDeadline.Duration,
 		RetryPeriod:   c.ComponentConfig.Generic.LeaderElection.RetryPeriod.Duration,
 		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: run,
+			OnStartedLeading: run,                      // 选主成功后, 运行当前函数体中定义的run函数(启动各个controller)
 			OnStoppedLeading: func() {
 				klog.Fatalf("leaderelection lost")
 			},

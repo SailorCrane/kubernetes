@@ -70,8 +70,10 @@ func startReplicaSetController(ctx ControllerContext) (http.Handler, bool, error
 	if !ctx.AvailableResources[schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "replicasets"}] {
 		return nil, false, nil
 	}
+
+    // 协程运行, 大量的controller都是通过协程运行起来的(参数包含controller关注的informer)
 	go replicaset.NewReplicaSetController(
-		ctx.InformerFactory.Apps().V1().ReplicaSets(),
+		ctx.InformerFactory.Apps().V1().ReplicaSets(),           // client-go中的informer(本质是etcdwatcher)
 		ctx.InformerFactory.Core().V1().Pods(),
 		ctx.ClientBuilder.ClientOrDie("replicaset-controller"),
 		replicaset.BurstReplicas,

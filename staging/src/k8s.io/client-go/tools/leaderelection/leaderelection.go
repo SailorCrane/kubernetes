@@ -162,11 +162,14 @@ type LeaderElector struct {
 }
 
 // Run starts the leader election loop
+// leader selection 过程
 func (le *LeaderElector) Run(ctx context.Context) {
 	defer func() {
 		runtime.HandleCrash()
 		le.config.Callbacks.OnStoppedLeading()
 	}()
+
+    // 所有的竞选人竞争这把锁? 第一个得到的人: 就是leader
 	if !le.acquire(ctx) {
 		return // ctx signalled done
 	}
