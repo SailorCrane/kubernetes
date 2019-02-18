@@ -174,6 +174,7 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 		return result, ErrNoNodesAvailable
 	}
 
+    // 保存cache信息
 	if err := g.snapshot(); err != nil {
 		return result, err
 	}
@@ -423,6 +424,7 @@ func (g *genericScheduler) numFeasibleNodesToFind(numAllNodes int32) (numNodes i
 
 // Filters the nodes to find the ones that fit based on the given predicate functions
 // Each node is passed through the predicate functions to determine if it is a fit
+// NOTE: 核心代码: 寻找一个合适的Node, 用来运行pod
 func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v1.Node, FailedPredicateMap, error) {
 	var filtered []*v1.Node
 	failedPredicateMap := FailedPredicateMap{}

@@ -263,10 +263,13 @@ func NewFromConfig(config *factory.Config) *Scheduler {
 
 // Run begins watching and scheduling. It waits for cache to be synced, then starts a goroutine and returns immediately.
 func (sched *Scheduler) Run() {
+    // 等待前提工作准备好: pod has sync
 	if !sched.config.WaitForCacheSync() {
 		return
 	}
 
+    // scheduler的主要工作在scheduleOne中
+    // wait.Until会循环执行sched.scheduleOne, 直到StopEverything
 	go wait.Until(sched.scheduleOne, 0, sched.config.StopEverything)
 }
 
@@ -292,6 +295,7 @@ func (sched *Scheduler) recordSchedulingFailure(pod *v1.Pod, err error, reason s
 
 // schedule implements the scheduling algorithm and returns the suggested result(host,
 // evaluated nodes number,feasible nodes number).
+// 对于pod实施调度
 func (sched *Scheduler) schedule(pod *v1.Pod) (core.ScheduleResult, error) {
 	result, err := sched.config.Algorithm.Schedule(pod, sched.config.NodeLister)
 	if err != nil {
@@ -452,6 +456,7 @@ func (sched *Scheduler) bind(assumed *v1.Pod, b *v1.Binding) error {
 }
 
 // scheduleOne does the entire scheduling workflow for a single pod.  It is serialized on the scheduling algorithm's host fitting.
+// 取出一个pod, 并分配到一个合适的node
 func (sched *Scheduler) scheduleOne() {
 	plugins := sched.config.PluginSet
 	// Remove all plugin context data at the beginning of a scheduling cycle.
@@ -474,17 +479,22 @@ func (sched *Scheduler) scheduleOne() {
 
 	// Synchronously attempt to find a fit for the pod.
 	start := time.Now()
+
+    // 现在开始寻找一个合适的node for pod
 	scheduleResult, err := sched.schedule(pod)
 	if err != nil {
 		// schedule() may have failed because the pod would not fit on any host, so we try to
 		// preempt, with the expectation that the next time the pod is tried for scheduling it
 		// will fit due to the preemption. It is also possible that a different pod will schedule
 		// into the resources that were preempted, but this is harmless.
+
+        // 如果调度失败, 并不放弃: 还要使用preemption方式再尝试调度
 		if fitError, ok := err.(*core.FitError); ok {
 			if !util.PodPriorityEnabled() || sched.config.DisablePreemption {
 				klog.V(3).Infof("Pod priority feature is not enabled or preemption is disabled by scheduler configuration." +
 					" No preemption is performed.")
 			} else {
+                // 使用 preempt调度pod到Node, 具体是干嘛? 不懂
 				preemptionStartTime := time.Now()
 				sched.preempt(pod, fitError)
 				metrics.PreemptionAttempts.Inc()
@@ -501,6 +511,8 @@ func (sched *Scheduler) scheduleOne() {
 		}
 		return
 	}
+
+    // 记录分配用时, 用来干嘛?
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInMicroseconds(start))
 	// Tell the cache to assume that a pod now is running on a given node, even though it hasn't been bound yet.
 	// This allows us to keep scheduling without waiting on binding to occur.

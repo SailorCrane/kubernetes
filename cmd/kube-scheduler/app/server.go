@@ -72,6 +72,7 @@ func NewSchedulerCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use: "kube-scheduler",
+        // 拓扑敏感如何体现? topology-aware
 		Long: `The Kubernetes scheduler is a policy-rich, topology-aware,
 workload-specific function that significantly impacts availability, performance,
 and capacity. The scheduler needs to take into account individual and collective
@@ -163,6 +164,7 @@ func runCommand(cmd *cobra.Command, args []string, opts *options.Options) error 
 // Run executes the scheduler based on the given configuration. It only return on error or when stopCh is closed.
 func Run(cc schedulerserverconfig.CompletedConfig, stopCh <-chan struct{}) error {
 	// Create the scheduler.
+    // pkg/scheduler中的模块返回一个scheduler
 	sched, err := scheduler.New(cc.Client,
 		cc.InformerFactory.Core().V1().Nodes(),
 		cc.PodInformer,
@@ -175,7 +177,7 @@ func Run(cc schedulerserverconfig.CompletedConfig, stopCh <-chan struct{}) error
 		cc.InformerFactory.Policy().V1beta1().PodDisruptionBudgets(),
 		cc.InformerFactory.Storage().V1().StorageClasses(),
 		cc.Recorder,
-		cc.ComponentConfig.AlgorithmSource,
+		cc.ComponentConfig.AlgorithmSource,         // scheduler算法
 		stopCh,
 		scheduler.WithName(cc.ComponentConfig.SchedulerName),
 		scheduler.WithHardPodAffinitySymmetricWeight(cc.ComponentConfig.HardPodAffinitySymmetricWeight),

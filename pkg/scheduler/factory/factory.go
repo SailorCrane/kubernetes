@@ -93,7 +93,7 @@ type Config struct {
 	// by NodeLister and Algorithm.
 	SchedulerCache schedulerinternalcache.Cache
 
-	NodeLister algorithm.NodeLister
+	NodeLister algorithm.NodeLister         // pod最终要分配到NodeLister
 	Algorithm  core.ScheduleAlgorithm
 	GetBinder  func(pod *v1.Pod) Binder
 	// PodConditionUpdater is used only in case of scheduling errors. If we succeed
@@ -870,6 +870,8 @@ func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, 
 	// TODO(bsalamat): the default registrar should be able to process config files.
 	c.pluginSet = plugins.NewDefaultPluginSet(pluginsv1alpha1.NewPluginContext(), &c.schedulerCache)
 
+    // NOTE: 算法列表 NewGenericScheduler
+    // TODO: 如果需要定制, 就在这里定制算法
 	algo := core.NewGenericScheduler(
 		c.schedulerCache,
 		c.podQueue,
