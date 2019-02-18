@@ -152,6 +152,7 @@ type genericScheduler struct {
 // functions.
 func (g *genericScheduler) snapshot() error {
 	// Used for all fit and priority funcs.
+    // 获取所有node的信息, 用来为pod选择合适的node
 	return g.cache.UpdateNodeNameToInfoMap(g.cachedNodeInfoMap)
 }
 
@@ -174,7 +175,7 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 		return result, ErrNoNodesAvailable
 	}
 
-    // 保存cache信息
+    // 获取所有node的信息, predicate filter要用
 	if err := g.snapshot(); err != nil {
 		return result, err
 	}
@@ -193,6 +194,7 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 			FailedPredicates: failedPredicateMap,
 		}
 	}
+    // 记录predicate用时, 不知道是用来干嘛的
 	metrics.SchedulingAlgorithmPredicateEvaluationDuration.Observe(metrics.SinceInMicroseconds(startPredicateEvalTime))
 	metrics.SchedulingLatency.WithLabelValues(metrics.PredicateEvaluation).Observe(metrics.SinceInSeconds(startPredicateEvalTime))
 
@@ -208,6 +210,7 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 		}, nil
 	}
 
+    // priority: 在predicate过滤出来的filtered中, 选择score weight最优的node
 	metaPrioritiesInterface := g.priorityMetaProducer(pod, g.cachedNodeInfoMap)
 	priorityList, err := PrioritizeNodes(pod, g.cachedNodeInfoMap, metaPrioritiesInterface, g.prioritizers, filteredNodes, g.extenders)
 	if err != nil {
@@ -424,9 +427,9 @@ func (g *genericScheduler) numFeasibleNodesToFind(numAllNodes int32) (numNodes i
 
 // Filters the nodes to find the ones that fit based on the given predicate functions
 // Each node is passed through the predicate functions to determine if it is a fit
-// NOTE: 核心代码: 寻找一个合适的Node, 用来运行pod
+// NOTE: predicate代码: 根据predicates策略, 过滤不符合predicates的node. 剩下的node可以进入"优选"阶段
 func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v1.Node, FailedPredicateMap, error) {
-	var filtered []*v1.Node
+	var filtered []*v1.Node     // 返回达到predicate标准的 Node
 	failedPredicateMap := FailedPredicateMap{}
 
 	if len(g.predicates) == 0 {
@@ -454,7 +457,7 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 			fits, failedPredicates, err := podFitsOnNode(
 				pod,
 				meta,
-				g.cachedNodeInfoMap[nodeName],
+				g.cachedNodeInfoMap[nodeName],      // 读取node info by name
 				g.predicates,
 				g.schedulingQueue,
 				g.alwaysCheckAllPredicates,
@@ -471,25 +474,29 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 					cancel()
 					atomic.AddInt32(&filteredLen, -1)
 				} else {
-					filtered[length-1] = g.cachedNodeInfoMap[nodeName].Node()
+					filtered[length-1] = g.cachedNodeInfoMap[nodeName].Node()       // 将node放入filtered
 				}
 			} else {
 				predicateResultLock.Lock()
-				failedPredicateMap[nodeName] = failedPredicates
+				failedPredicateMap[nodeName] = failedPredicates     // 将FailedPredicates放入failed中
 				predicateResultLock.Unlock()
 			}
 		}
 
 		// Stops searching for more nodes once the configured number of feasible nodes
 		// are found.
+        // 使用协程对allNodes执行checkNode
 		workqueue.ParallelizeUntil(ctx, 16, int(allNodes), checkNode)
 
 		filtered = filtered[:filteredLen]
+
+        // 发生错误
 		if len(errs) > 0 {
 			return []*v1.Node{}, FailedPredicateMap{}, errors.CreateAggregateFromMessageCountMap(errs)
 		}
 	}
 
+    // 使用extenders再过滤一遍filtered
 	if len(filtered) > 0 && len(g.extenders) != 0 {
 		for _, extender := range g.extenders {
 			if !extender.IsInterested(pod) {
@@ -645,9 +652,11 @@ func PrioritizeNodes(
 ) (schedulerapi.HostPriorityList, error) {
 	// If no priority configs are provided, then the EqualPriority function is applied
 	// This is required to generate the priority list in the required format
+    // 英文注释很清晰
 	if len(priorityConfigs) == 0 && len(extenders) == 0 {
 		result := make(schedulerapi.HostPriorityList, 0, len(nodes))
 		for i := range nodes {
+            // 猜测: equalPriority 每个node得分都相同(然后随机选择?还是轮流选择?)
 			hostPriority, err := EqualPriorityMap(pod, meta, nodeNameToInfo[nodes[i].Name])
 			if err != nil {
 				return nil, err
@@ -673,6 +682,7 @@ func PrioritizeNodes(
 	// DEPRECATED: we can remove this when all priorityConfigs implement the
 	// Map-Reduce pattern.
 	for i := range priorityConfigs {
+        // 对每个priority循环: 每个priority计算所有的Node分数
 		if priorityConfigs[i].Function != nil {
 			wg.Add(1)
 			go func(index int) {
@@ -684,6 +694,7 @@ func PrioritizeNodes(
 				}
 			}(i)
 		} else {
+            // priority不存在, 使用默认分数
 			results[i] = make(schedulerapi.HostPriorityList, len(nodes))
 		}
 	}

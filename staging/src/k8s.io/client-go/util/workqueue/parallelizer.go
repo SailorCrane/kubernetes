@@ -41,9 +41,11 @@ func ParallelizeUntil(ctx context.Context, workers, pieces int, doWorkPiece DoWo
 		stop = ctx.Done()
 	}
 
+    // 将pieces放入toProcess中
 	toProcess := make(chan int, pieces)
 	for i := 0; i < pieces; i++ {
 		toProcess <- i
+
 	}
 	close(toProcess)
 
@@ -57,6 +59,8 @@ func ParallelizeUntil(ctx context.Context, workers, pieces int, doWorkPiece DoWo
 		go func() {
 			defer utilruntime.HandleCrash()
 			defer wg.Done()
+
+            // 从toProcess读取piece索引, 并做出处理
 			for piece := range toProcess {
 				select {
 				case <-stop:
