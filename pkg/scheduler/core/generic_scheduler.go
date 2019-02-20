@@ -210,9 +210,9 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 		}, nil
 	}
 
-    // priority: 在predicate过滤出来的filtered中, 选择score weight最优的node
 	metaPrioritiesInterface := g.priorityMetaProducer(pod, g.cachedNodeInfoMap)
 
+    // priority: 在predicate过滤出来的filtered中, 选择score weight最优的node
     // priorityList是每个node的得分
 	priorityList, err := PrioritizeNodes(pod, g.cachedNodeInfoMap, metaPrioritiesInterface, g.prioritizers, filteredNodes, g.extenders)
 	if err != nil {

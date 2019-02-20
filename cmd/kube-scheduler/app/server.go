@@ -133,12 +133,14 @@ func runCommand(cmd *cobra.Command, args []string, opts *options.Options) error 
 		klog.Infof("Wrote configuration to: %s\n", opts.WriteConfigTo)
 	}
 
+	// option(命令行参数)转换为Config
 	c, err := opts.Config()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)
 	}
 
+    // 用来接受control-c等信号, 停止程序
 	stopCh := make(chan struct{})
 
 	// Get the completed config
@@ -149,6 +151,7 @@ func runCommand(cmd *cobra.Command, args []string, opts *options.Options) error 
 
 	// Apply algorithms based on feature gates.
 	// TODO: make configurable?
+    // ApplyFeatureGates做了什么?: 根据配置开启响应特性
 	algorithmprovider.ApplyFeatureGates()
 
 	// Configz registration.

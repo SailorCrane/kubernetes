@@ -160,6 +160,7 @@ func New(client clientset.Interface,
 	})
 	var config *factory.Config
 	source := schedulerAlgorithmSource
+    // configurator 创建sc/config
 	switch {
 	case source.Provider != nil:
 		// Create the config from a named algorithm provider.
@@ -435,6 +436,7 @@ func (sched *Scheduler) bind(assumed *v1.Pod, b *v1.Binding) error {
 	bindingStart := time.Now()
 	// If binding succeeded then PodScheduled condition will be updated in apiserver so that
 	// it's atomic with setting host.
+    // factory中的 getBinderFunc
 	err := sched.config.GetBinder(assumed).Bind(b)
 	if finErr := sched.config.SchedulerCache.FinishBinding(assumed); finErr != nil {
 		klog.Errorf("scheduler cache FinishBinding failed: %v", finErr)
@@ -451,6 +453,8 @@ func (sched *Scheduler) bind(assumed *v1.Pod, b *v1.Binding) error {
 
 	metrics.BindingLatency.Observe(metrics.SinceInMicroseconds(bindingStart))
 	metrics.SchedulingLatency.WithLabelValues(metrics.Binding).Observe(metrics.SinceInSeconds(bindingStart))
+
+    // 发送绑定成功信号
 	sched.config.Recorder.Eventf(assumed, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", assumed.Namespace, assumed.Name, b.Target.Name)
 	return nil
 }
@@ -513,11 +517,14 @@ func (sched *Scheduler) scheduleOne() {
 	}
 
     // 记录scheduler所用时长, 用来干嘛?
+    // 估计是用来做profile/log/predicate的
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInMicroseconds(start))
+
 	// Tell the cache to assume that a pod now is running on a given node, even though it hasn't been bound yet.
 	// This allows us to keep scheduling without waiting on binding to occur.
-
-    // TODO: 假定这个pod运行在一个node上了? 不懂何意!!!
+	// assumedPod是那些已经有了合适的node, 但还没有真正bind到node的pod
+	// assumedPod不会再执行调度过程
+	// 具体如何操作, 还没有看懂
 	assumedPod := pod.DeepCopy()
 
 	// Assume volumes first before assuming the pod.
@@ -527,6 +534,7 @@ func (sched *Scheduler) scheduleOne() {
 	// Otherwise, binding of volumes is started after the pod is assumed, but before pod binding.
 	//
 	// This function modifies 'assumedPod' if volume binding is required.
+    // 绑定volume?
 	allBound, err := sched.assumeVolumes(assumedPod, scheduleResult.SuggestedHost)
 	if err != nil {
 		klog.Errorf("error assuming volumes: %v", err)
@@ -535,6 +543,7 @@ func (sched *Scheduler) scheduleOne() {
 	}
 
 	// Run "reserve" plugins.
+    // 猜测是pod运行前的插件, 如果是这样, 可否为每个pod装入fluent-bit agent, 用来收集日志?但是fluent-bit也要指定日志目录
 	for _, pl := range plugins.ReservePlugins() {
 		if err := pl.Reserve(plugins, assumedPod, scheduleResult.SuggestedHost); err != nil {
 			klog.Errorf("error while running %v reserve plugin for pod %v: %v", pl.Name(), assumedPod.Name, err)
@@ -544,6 +553,7 @@ func (sched *Scheduler) scheduleOne() {
 			return
 		}
 	}
+
 	// assume modifies `assumedPod` by setting NodeName=scheduleResult.SuggestedHost
 	err = sched.assume(assumedPod, scheduleResult.SuggestedHost)
 	if err != nil {
@@ -587,6 +597,7 @@ func (sched *Scheduler) scheduleOne() {
 			}
 		}
 
+		// 将pod bind到host中
 		err := sched.bind(assumedPod, &v1.Binding{
 			ObjectMeta: metav1.ObjectMeta{Namespace: assumedPod.Namespace, Name: assumedPod.Name, UID: assumedPod.UID},
 			Target: v1.ObjectReference{
@@ -594,6 +605,8 @@ func (sched *Scheduler) scheduleOne() {
 				Name: scheduleResult.SuggestedHost,
 			},
 		})
+
+        // E2eSchedulingLatency是一个histogram对象, 用来根据数据画直方图?
 		metrics.E2eSchedulingLatency.Observe(metrics.SinceInMicroseconds(start))
 		if err != nil {
 			klog.Errorf("error binding pod: %v", err)
