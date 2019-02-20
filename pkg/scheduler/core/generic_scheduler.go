@@ -212,6 +212,8 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 
     // priority: 在predicate过滤出来的filtered中, 选择score weight最优的node
 	metaPrioritiesInterface := g.priorityMetaProducer(pod, g.cachedNodeInfoMap)
+
+    // priorityList是每个node的得分
 	priorityList, err := PrioritizeNodes(pod, g.cachedNodeInfoMap, metaPrioritiesInterface, g.prioritizers, filteredNodes, g.extenders)
 	if err != nil {
 		return result, err
@@ -221,6 +223,7 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 
 	trace.Step("Selecting host")
 
+    // 根据分数, 选出一个合适的node来
 	host, err := g.selectHost(priorityList)
 	return ScheduleResult{
 		SuggestedHost:  host,
@@ -266,7 +269,7 @@ func (g *genericScheduler) selectHost(priorityList schedulerapi.HostPriorityList
 
 	maxScores := findMaxScores(priorityList)
 	ix := int(g.lastNodeIndex % uint64(len(maxScores)))
-	g.lastNodeIndex++
+	g.lastNodeIndex++       // 这里循环 ++, 可以保证如果使用默认分配策略时, 可以按照node大致均匀分配
 
 	return priorityList[maxScores[ix]].Host, nil
 }
@@ -642,6 +645,7 @@ func podFitsOnNode(
 // Each priority function can also have its own weight
 // The node scores returned by the priority function are multiplied by the weights to get weighted scores
 // All scores are finally combined (added) to get the total weighted scores of all nodes
+// 返回每个nodes得分
 func PrioritizeNodes(
 	pod *v1.Pod,
 	nodeNameToInfo map[string]*schedulernodeinfo.NodeInfo,
@@ -694,7 +698,7 @@ func PrioritizeNodes(
 				}
 			}(i)
 		} else {
-            // priority不存在, 使用默认分数
+            // priority不存在, 所有nodes使用默认分数: 1分
 			results[i] = make(schedulerapi.HostPriorityList, len(nodes))
 		}
 	}
@@ -707,6 +711,7 @@ func PrioritizeNodes(
 			}
 
 			var err error
+            // 这里Map做了什么?
 			results[i][index], err = priorityConfigs[i].Map(pod, meta, nodeInfo)
 			if err != nil {
 				appendError(err)
@@ -741,6 +746,7 @@ func PrioritizeNodes(
 	// Summarize all scores.
 	result := make(schedulerapi.HostPriorityList, 0, len(nodes))
 
+    // 计算出所有nodes的总分数
 	for i := range nodes {
 		result = append(result, schedulerapi.HostPriority{Host: nodes[i].Name, Score: 0})
 		for j := range priorityConfigs {
@@ -748,7 +754,10 @@ func PrioritizeNodes(
 		}
 	}
 
+    // extenders是干嘛的? 在predicates中已经出现过了
+    // 猜测: 猜测extenders是以用户可以custom并类似于插件的方式提供
 	if len(extenders) != 0 && nodes != nil {
+        // 计算combineScores
 		combinedScores := make(map[string]int, len(nodeNameToInfo))
 		for i := range extenders {
 			if !extenders[i].IsInterested(pod) {

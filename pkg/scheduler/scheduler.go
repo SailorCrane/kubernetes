@@ -507,15 +507,17 @@ func (sched *Scheduler) scheduleOne() {
 			metrics.PodScheduleFailures.Inc()
 		} else {
 			klog.Errorf("error selecting node for pod: %v", err)
-			metrics.PodScheduleErrors.Inc()
+            metrics.PodScheduleErrors.Inc()     // Increase errors
 		}
 		return
 	}
 
-    // 记录分配用时, 用来干嘛?
+    // 记录scheduler所用时长, 用来干嘛?
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInMicroseconds(start))
 	// Tell the cache to assume that a pod now is running on a given node, even though it hasn't been bound yet.
 	// This allows us to keep scheduling without waiting on binding to occur.
+
+    // TODO: 假定这个pod运行在一个node上了? 不懂何意!!!
 	assumedPod := pod.DeepCopy()
 
 	// Assume volumes first before assuming the pod.
