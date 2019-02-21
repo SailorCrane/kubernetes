@@ -357,21 +357,28 @@ func (s *KubeletServer) AddFlags(fs *pflag.FlagSet) {
 // AddFlags adds flags for a specific KubeletFlags to the specified FlagSet
 func (f *KubeletFlags) AddFlags(mainfs *pflag.FlagSet) {
 	fs := pflag.NewFlagSet("", pflag.ExitOnError)
+
+    // 程序最后: 将fs内容都添加到mainfs中
 	defer func() {
 		// Unhide deprecated flags. We want deprecated flags to show in Kubelet help.
 		// We have some hidden flags, but we might as well unhide these when they are deprecated,
 		// as silently deprecating and removing (even hidden) things is unkind to people who use them.
 		fs.VisitAll(func(f *pflag.Flag) {
+
+            // 虽然某选项deprecated, 但并不从命令行隐藏
 			if len(f.Deprecated) > 0 {
 				f.Hidden = false
 			}
 		})
+
+        // 将fs所有flag都copy到mainfs中
 		mainfs.AddFlagSet(fs)
 	}()
 
-	f.ContainerRuntimeOptions.AddFlags(fs)  // 在fs中添加docker相关内容
-	f.addOSFlags(fs)                        // 为fs添加 "windows-service" Flag
+	f.ContainerRuntimeOptions.AddFlags(fs)  // 在fs中添加docker相关内容flag
+	f.addOSFlags(fs)                        // 为fs添加 "windows-service" flag
 
+    // 为新的fs添加flag
 	fs.StringVar(&f.KubeletConfigFile, "config", f.KubeletConfigFile, "The Kubelet will load its initial configuration from this file. The path may be absolute or relative; relative paths start at the Kubelet's current working directory. Omit this flag to use the built-in default configuration values. Command-line flags override configuration from this file.")
 	fs.StringVar(&f.KubeConfig, "kubeconfig", f.KubeConfig, "Path to a kubeconfig file, specifying how to connect to the API server. Providing --kubeconfig enables API server mode, omitting --kubeconfig enables standalone mode.")
 
@@ -466,6 +473,8 @@ func AddKubeletConfigFlags(mainfs *pflag.FlagSet, c *kubeletconfig.KubeletConfig
 		// e.g. if a flag was added after this deprecation function, it may not be at the end
 		// of its lifetime yet, even if the rest are.
 		deprecated := "This parameter should be set via the config file specified by the Kubelet's --config flag. See https://kubernetes.io/docs/tasks/administer-cluster/kubelet-config-file/ for more information."
+
+        // 将configuration相关的flag都设置为deprecated, 提示用户都尽量在--config中设置
 		fs.VisitAll(func(f *pflag.Flag) {
 			f.Deprecated = deprecated
 		})

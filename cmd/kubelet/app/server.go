@@ -148,6 +148,8 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 		DisableFlagParsing: true,
 		Run: func(cmd *cobra.Command, args []string) {
 			// initial flag parse, since we disable cobra's flag parsing
+
+            // NOTE: Parse(args)会将命令行指定的参数, 设置到StringVar()添加flag时, 指定的地址中
 			if err := cleanFlagSet.Parse(args); err != nil {
 				cmd.Usage()
 				klog.Fatal(err)
@@ -172,6 +174,8 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 
 			// short-circuit on verflag
 			verflag.PrintAndExitIfRequested()
+
+            // klog在日志中就来cleanFlagSet
 			utilflag.PrintFlags(cleanFlagSet)
 
 			// set feature gates from initial flags-based config
@@ -189,6 +193,8 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			}
 
 			// load kubelet config file, if provided
+            // 如果--config指定了配置文件, 就会通过cleanFlags.Parse(args) 设置到kubeletFlags.KubeletConfigFile
+            // 最终还是从kubeletFlags.KubeletConfigFile中读取设置
 			if configFile := kubeletFlags.KubeletConfigFile; len(configFile) > 0 {
 				kubeletConfig, err = loadConfigFile(configFile)
 				if err != nil {
@@ -197,6 +203,8 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 				// We must enforce flag precedence by re-parsing the command line into the new object.
 				// This is necessary to preserve backwards-compatibility across binary upgrades.
 				// See issue #56171 for more details.
+                // precedence这里做什么? 命令行参数和配置文件优先级的先后调整?
+                // 按照代码逻辑: 看起来应该是命令行优先级更高
 				if err := kubeletConfigFlagPrecedence(kubeletConfig, args); err != nil {
 					klog.Fatal(err)
 				}
@@ -271,9 +279,18 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 	}
 
 	// keep cleanFlagSet separate, so Cobra doesn't pollute it with the global flags
+    // 1: 将kubelet相关的flag添加到cleanFlagSet中(包括docker相关的flag)
 	kubeletFlags.AddFlags(cleanFlagSet)
+
+    // 2: 把kubeconfig相关的flag添加到cleanFlagSet中, 并且设置为deprecated, 提示用户从--config中设置
+    // 目的还是为了在cleanFlagSet.Parse()解析时, 将参数设置到kubeletConfig对象中去
 	options.AddKubeletConfigFlags(cleanFlagSet, kubeletConfig)
-	options.AddGlobalFlags(cleanFlagSet)        // 为cleanFlagSet 添加kubelet的flag
+
+    // 3: 为cleanFlagSet 添加一些全局的的flag
+    // 如logtostderr, log_dir等
+    // 如此一来: cleanFlagSet集合了kubelet flagset, kubelet configuration, global flagset
+	options.AddGlobalFlags(cleanFlagSet)
+
 	cleanFlagSet.BoolP("help", "h", false, fmt.Sprintf("help for %s", cmd.Name()))
 
 	// ugly, but necessary, because Cobra's default UsageFunc and HelpFunc pollute the flagset with global flags
@@ -315,6 +332,7 @@ func newFakeFlagSet(fs *pflag.FlagSet) *pflag.FlagSet {
 // We must enforce flag precedence by re-parsing the command line into the new object.
 // This is necessary to preserve backwards-compatibility across binary upgrades.
 // See issue #56171 for more details.
+// 特意看了#56171 issue, 没有看太明白
 func kubeletConfigFlagPrecedence(kc *kubeletconfiginternal.KubeletConfiguration, args []string) error {
 	// We use a throwaway kubeletFlags and a fake global flagset to avoid double-parses,
 	// as some Set implementations accumulate values from multiple flag invocations.
@@ -326,10 +344,12 @@ func kubeletConfigFlagPrecedence(kc *kubeletconfiginternal.KubeletConfiguration,
 	// Remember original feature gates, so we can merge with flag gates later
 	original := kc.FeatureGates
 	// re-parse flags
+    // 再次parse: 命令行中的参数会设置到kc对象中, 覆盖之前loadConfigFile中设置的参数
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	// Add back feature gates that were set in the original kc, but not in flags
+    // 恢复在config file中配置, 在命令行flags中没有配置的feature gates
 	for k, v := range original {
 		if _, ok := kc.FeatureGates[k]; !ok {
 			kc.FeatureGates[k] = v

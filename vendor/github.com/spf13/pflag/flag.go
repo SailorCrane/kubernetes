@@ -399,6 +399,7 @@ func (f *FlagSet) ArgsLenAtDash() int {
 // MarkDeprecated indicated that a flag is deprecated in your program. It will
 // continue to function but will not show up in help or usage messages. Using
 // this flag will also print the given usageMessage.
+// 将某个flag标志为Deprecated
 func (f *FlagSet) MarkDeprecated(name string, usageMessage string) error {
 	flag := f.Lookup(name)
 	if flag == nil {

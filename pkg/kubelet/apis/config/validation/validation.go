@@ -29,6 +29,7 @@ import (
 )
 
 // ValidateKubeletConfiguration validates `kc` and returns an error if it is invalid
+// 验证合法性
 func ValidateKubeletConfiguration(kc *kubeletconfig.KubeletConfiguration) error {
 	allErrors := []error{}
 
@@ -37,6 +38,7 @@ func ValidateKubeletConfiguration(kc *kubeletconfig.KubeletConfiguration) error 
 	localFeatureGate := utilfeature.DefaultFeatureGate.DeepCopy()
 	localFeatureGate.SetFromMap(kc.FeatureGates)
 
+    // 在AddKubeletConfigFlags()找不到的, 就是只能在config file中配置的参数选项
 	if kc.NodeLeaseDurationSeconds <= 0 {
 		allErrors = append(allErrors, fmt.Errorf("invalid configuration: NodeLeaseDurationSeconds must be greater than 0"))
 	}
