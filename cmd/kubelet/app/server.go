@@ -208,6 +208,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			}
 
 			// use dynamic kubelet config, if enabled
+            // 动态configuration, 允许k8s集群中所有node节点的kubelet共享同一个configMap中的配置
 			var kubeletConfigController *dynamickubeletconfig.Controller
 			if dynamicConfigDir := kubeletFlags.DynamicConfigDir.Value(); len(dynamicConfigDir) > 0 {
 				var dynamicKubeletConfig *kubeletconfiginternal.KubeletConfiguration
@@ -267,7 +268,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 	// keep cleanFlagSet separate, so Cobra doesn't pollute it with the global flags
 	kubeletFlags.AddFlags(cleanFlagSet)
 	options.AddKubeletConfigFlags(cleanFlagSet, kubeletConfig)
-	options.AddGlobalFlags(cleanFlagSet)
+	options.AddGlobalFlags(cleanFlagSet)        // 为cleanFlagSet 添加kubelet的flag
 	cleanFlagSet.BoolP("help", "h", false, fmt.Sprintf("help for %s", cmd.Name()))
 
 	// ugly, but necessary, because Cobra's default UsageFunc and HelpFunc pollute the flagset with global flags
@@ -1166,6 +1167,7 @@ func parseResourceList(m map[string]string) (v1.ResourceList, error) {
 }
 
 // BootstrapKubeletConfigController constructs and bootstrap a configuration controller
+// 启动一个configuration controller: 监控dynamic configuration的变化?
 func BootstrapKubeletConfigController(dynamicConfigDir string, transform dynamickubeletconfig.TransformFunc) (*kubeletconfiginternal.KubeletConfiguration, *dynamickubeletconfig.Controller, error) {
 	if !utilfeature.DefaultFeatureGate.Enabled(features.DynamicKubeletConfig) {
 		return nil, nil, fmt.Errorf("failed to bootstrap Kubelet config controller, you must enable the DynamicKubeletConfig feature gate")
