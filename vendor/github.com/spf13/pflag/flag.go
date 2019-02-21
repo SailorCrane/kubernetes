@@ -153,9 +153,12 @@ type FlagSet struct {
 	actual            map[NormalizedName]*Flag
 	orderedActual     []*Flag
 	sortedActual      []*Flag
+
+	// 所有的flags
 	formal            map[NormalizedName]*Flag
 	orderedFormal     []*Flag
 	sortedFormal      []*Flag
+
 	shorthands        map[byte]*Flag
 	args              []string // arguments after flags
 	argsLenAtDash     int      // len(args) when a '--' was located when parsing, or -1 if no --
@@ -213,7 +216,10 @@ func sortFlags(flags map[NormalizedName]*Flag) []*Flag {
 // "--getUrl" which may also be translated to "geturl" and everything will work.
 func (f *FlagSet) SetNormalizeFunc(n func(f *FlagSet, name string) NormalizedName) {
 	f.normalizeNameFunc = n
+
 	f.sortedFormal = f.sortedFormal[:0]
+
+    // 中途修改了normalize func后, 需要重新计算f.normal map
 	for fname, flag := range f.formal {
 		nname := f.normalizeFlagName(flag.Name)
 		if fname == nname {
@@ -265,7 +271,11 @@ func (f *FlagSet) VisitAll(fn func(*Flag)) {
 	}
 
 	var flags []*Flag
+
+    // 判断是否需要顺序访问 flags
 	if f.SortFlags {
+        // 根据sortedFormal判断是否排序过
+        // 如果没有排序, 则排序, 并cache排序结果到f.sortedFormal
 		if len(f.formal) != len(f.sortedFormal) {
 			f.sortedFormal = sortFlags(f.formal)
 		}
@@ -827,6 +837,8 @@ func (f *FlagSet) VarP(value Value, name, shorthand, usage string) {
 
 // AddFlag will add the flag to the FlagSet
 func (f *FlagSet) AddFlag(flag *Flag) {
+    // 对pflag的name进行normalized处理
+    // normalize函数由外部传入
 	normalizedFlagName := f.normalizeFlagName(flag.Name)
 
 	_, alreadyThere := f.formal[normalizedFlagName]
@@ -841,8 +853,10 @@ func (f *FlagSet) AddFlag(flag *Flag) {
 
 	flag.Name = string(normalizedFlagName)
 	f.formal[normalizedFlagName] = flag
+
 	f.orderedFormal = append(f.orderedFormal, flag)
 
+    // shorthand map ------> current flag
 	if flag.Shorthand == "" {
 		return
 	}
@@ -871,6 +885,8 @@ func (f *FlagSet) AddFlagSet(newSet *FlagSet) {
 		return
 	}
 	newSet.VisitAll(func(flag *Flag) {
+        // 如果不存在flag, 则添加/合并到当前flagSet中
+        // 存在则忽略(可以看出当前flagSet优先级较高)
 		if f.Lookup(flag.Name) == nil {
 			f.AddFlag(flag)
 		}

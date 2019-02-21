@@ -108,8 +108,13 @@ const (
 func NewKubeletCommand(stopCh <-chan struct{}) *cobra.Command {
 	cleanFlagSet := pflag.NewFlagSet(componentKubelet, pflag.ContinueOnError)
 	cleanFlagSet.SetNormalizeFunc(flag.WordSepNormalizeFunc)
+
+    // kubelet flag不同于 pflag, 位于 app/options
 	kubeletFlags := options.NewKubeletFlags()
+
+    // kubeletConfig是动态的configuration
 	kubeletConfig, err := options.NewKubeletConfiguration()
+
 	// programmer error
 	if err != nil {
 		klog.Fatal(err)
