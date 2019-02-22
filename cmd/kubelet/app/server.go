@@ -179,6 +179,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			utilflag.PrintFlags(cleanFlagSet)
 
 			// set feature gates from initial flags-based config
+            // 将flags中得到的featureGates设置到全局features配置中
 			if err := utilfeature.DefaultMutableFeatureGate.SetFromMap(kubeletConfig.FeatureGates); err != nil {
 				klog.Fatal(err)
 			}
@@ -188,6 +189,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 				klog.Fatal(err)
 			}
 
+            // 默认pod所需镜像
 			if kubeletFlags.ContainerRuntime == "remote" && cleanFlagSet.Changed("pod-infra-container-image") {
 				klog.Warning("Warning: For remote container runtime, --pod-infra-container-image is ignored in kubelet, which should be set in that remote runtime instead")
 			}
@@ -216,6 +218,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 
 			// We always validate the local configuration (command line + config file).
 			// This is the default "last-known-good" config for dynamic config, and must always remain valid.
+            // 验证kubeletConfiguration合法性
 			if err := kubeletconfigvalidation.ValidateKubeletConfiguration(kubeletConfig); err != nil {
 				klog.Fatal(err)
 			}
@@ -223,8 +226,12 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			// use dynamic kubelet config, if enabled
             // 动态configuration, 允许k8s集群中所有node节点的kubelet共享同一个configMap中的配置
 			var kubeletConfigController *dynamickubeletconfig.Controller
+
+            // dynamicConfigDir: 下载动态配置文件到此目录中
 			if dynamicConfigDir := kubeletFlags.DynamicConfigDir.Value(); len(dynamicConfigDir) > 0 {
+
 				var dynamicKubeletConfig *kubeletconfiginternal.KubeletConfiguration
+                // 这里传入了transform回调, 用命令行的flags覆盖dynamicKubeletConfig中的flag(命令行优先级最高)
 				dynamicKubeletConfig, kubeletConfigController, err = BootstrapKubeletConfigController(dynamicConfigDir,
 					func(kc *kubeletconfiginternal.KubeletConfiguration) error {
 						// Here, we enforce flag precedence inside the controller, prior to the controller's validation sequence,
@@ -236,8 +243,10 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 				if err != nil {
 					klog.Fatal(err)
 				}
+
 				// If we should just use our existing, local config, the controller will return a nil config
 				if dynamicKubeletConfig != nil {
+                    // NOTE: 用dynamicKubeletConfig覆盖kubeletConfig
 					kubeletConfig = dynamicKubeletConfig
 					// Note: flag precedence was already enforced in the controller, prior to validation,
 					// by our above transform function. Now we simply update feature gates from the new config.
@@ -247,19 +256,23 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 				}
 			}
 
+            // 一切配置都准备好之后, 创建kubeletServer
 			// construct a KubeletServer from kubeletFlags and kubeletConfig
+            // kubeletServer其实就是 kubeletFlags + kubeletConfig
 			kubeletServer := &options.KubeletServer{
 				KubeletFlags:         *kubeletFlags,
 				KubeletConfiguration: *kubeletConfig,
 			}
 
 			// use kubeletServer to construct the default KubeletDeps
+            // kubeletDeps应该是kubelet server所需的种种配置等, 如docker, dynamicConfigController
 			kubeletDeps, err := UnsecuredDependencies(kubeletServer)
 			if err != nil {
 				klog.Fatal(err)
 			}
 
 			// add the kubelet config controller to kubeletDeps
+            // KubeletConfigController是负责dynamicConroller的
 			kubeletDeps.KubeletConfigController = kubeletConfigController
 
 			// start the experimental docker shim, if enabled
@@ -271,6 +284,7 @@ HTTP server: The kubelet can also listen for HTTP and respond to a simple API
 			}
 
 			// run the kubelet
+            // 开始运行kubelet server
 			klog.V(5).Infof("KubeletConfiguration: %#v", kubeletServer.KubeletConfiguration)
 			if err := Run(kubeletServer, kubeletDeps, stopCh); err != nil {
 				klog.Fatal(err)
@@ -492,6 +506,8 @@ func makeEventRecorder(kubeDeps *kubelet.Dependencies, nodeName types.NodeName) 
 	}
 }
 
+
+// 真正启动kubelet server 代码的地方
 func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan struct{}) (err error) {
 	// Set global feature gates based on the value on the initial KubeletServer
 	err = utilfeature.DefaultMutableFeatureGate.SetFromMap(s.KubeletConfiguration.FeatureGates)
@@ -499,6 +515,7 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 		return err
 	}
 	// validate the initial KubeletServer (we set feature gates first, because this validation depends on feature gates)
+    // 再次validate KubeletServer中的flag + configuration
 	if err := options.ValidateKubeletServer(s); err != nil {
 		return err
 	}
@@ -529,6 +546,8 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 
 	// About to get clients and such, detect standaloneMode
 	standaloneMode := true
+
+    // KubeConfig是所指定的连接apiserver的地址, 如果没有指定, 就工作在standalone模式
 	if len(s.KubeConfig) > 0 {
 		standaloneMode = false
 	}
@@ -540,6 +559,8 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 		}
 	}
 
+    // NOTE: 看一下Cloud是什么玩意
+    // 根据 cloudProvider和clodConfigFile创建Cloud, 暂时先不关注
 	if kubeDeps.Cloud == nil {
 		if !cloudprovider.IsExternal(s.CloudProvider) {
 			cloud, err := cloudprovider.InitCloudProvider(s.CloudProvider, s.CloudConfigFile)
@@ -566,6 +587,7 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 
 	// if in standalone mode, indicate as much by setting all clients to nil
 	switch {
+	// standalone模式不需要kubeClient, kubelet直接监听客户端需求
 	case standaloneMode:
 		kubeDeps.KubeClient = nil
 		kubeDeps.DynamicKubeClient = nil
@@ -573,13 +595,16 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 		kubeDeps.HeartbeatClient = nil
 		klog.Warningf("standalone mode, no API client")
 
+	// 非alone模式, 创建kubeClient
 	case kubeDeps.KubeClient == nil, kubeDeps.EventClient == nil, kubeDeps.HeartbeatClient == nil, kubeDeps.DynamicKubeClient == nil:
+        // 先创建clientConfig, 根据s的kubeconfig配置文件
 		clientConfig, closeAllConns, err := buildKubeletClientConfig(s, nodeName)
 		if err != nil {
 			return err
 		}
 		kubeDeps.OnHeartbeatFailure = closeAllConns
 
+        // 创建出kube client, 用来连接api server
 		kubeDeps.KubeClient, err = clientset.NewForConfig(clientConfig)
 		if err != nil {
 			return fmt.Errorf("failed to initialize kubelet client: %v", err)
@@ -600,6 +625,7 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 		}
 
 		// make a separate client for heartbeat with throttling disabled and a timeout attached
+        // 专门创建一个kube client, 用来和apiserver维持心跳, 并且报告node信息
 		heartbeatClientConfig := *clientConfig
 		heartbeatClientConfig.Timeout = s.KubeletConfiguration.NodeStatusUpdateFrequency.Duration
 		// if the NodeLease feature is enabled, the timeout is the minimum of the lease duration and status update frequency
@@ -616,6 +642,7 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 		}
 
 		// CRDs are JSON only, and client renegotiation for streaming is not correct as per #67803
+        // CSI storage, 和存储相关, 暂时还不知道用来干啥
 		csiClientConfig := restclient.CopyConfig(clientConfig)
 		csiClientConfig.ContentType = "application/json"
 		kubeDeps.CSIClient, err = csiclientset.NewForConfig(csiClientConfig)
@@ -627,11 +654,15 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 	// If the kubelet config controller is available, and dynamic config is enabled, start the config and status sync loops
 	if utilfeature.DefaultFeatureGate.Enabled(features.DynamicKubeletConfig) && len(s.DynamicConfigDir.Value()) > 0 &&
 		kubeDeps.KubeletConfigController != nil && !standaloneMode && !s.RunOnce {
+
+        // KubeletConfigController startSync()
+        // StartSync中: 监控动态配置文件, node等变化
 		if err := kubeDeps.KubeletConfigController.StartSync(kubeDeps.KubeClient, kubeDeps.EventClient, string(nodeName)); err != nil {
 			return err
 		}
 	}
 
+    // 从kubelient获取authentication相关配置, 放入deps.Auth中
 	if kubeDeps.Auth == nil {
 		auth, err := BuildAuth(nodeName, kubeDeps.KubeClient, s.KubeletConfiguration)
 		if err != nil {
@@ -641,6 +672,8 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 	}
 
 	if kubeDeps.CAdvisorInterface == nil {
+        // ContainerRuntime默认是docker
+        // RemoteRuntimeEndpoint是k8s连接docker rpc的socket
 		imageFsInfoProvider := cadvisor.NewImageFsInfoProvider(s.ContainerRuntime, s.RemoteRuntimeEndpoint)
 		kubeDeps.CAdvisorInterface, err = cadvisor.New(imageFsInfoProvider, s.RootDirectory, cadvisor.UsingLegacyCadvisorStats(s.ContainerRuntime, s.RemoteRuntimeEndpoint))
 		if err != nil {
@@ -651,6 +684,7 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 	// Setup event recorder if required.
 	makeEventRecorder(kubeDeps, nodeName)
 
+    // 设置ContainerManager, 猜测是用来管理docker 或者其它容器的对象
 	if kubeDeps.ContainerManager == nil {
 		if s.CgroupsPerQOS && s.CgroupRoot == "" {
 			klog.Info("--cgroups-per-qos enabled, but --cgroup-root was not specified.  defaulting to /")
@@ -730,6 +764,8 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 		klog.Warning(err)
 	}
 
+	// NOTE: 真正运行kubelet server的地方
+    // s.RunOnce如果为true, 运行完manifest中的pod后, 直接退出(很少使用, 目前还没有看到用场)
 	if err := RunKubelet(s, kubeDeps, s.RunOnce); err != nil {
 		return err
 	}
@@ -755,6 +791,7 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 	case <-done:
 		break
 	case <-stopCh:
+        // 返回后, 上层main函数会退出, 导致程序退出
 		break
 	}
 
@@ -764,6 +801,9 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 // buildKubeletClientConfig constructs the appropriate client config for the kubelet depending on whether
 // bootstrapping is enabled or client certificate rotation is enabled.
 func buildKubeletClientConfig(s *options.KubeletServer, nodeName types.NodeName) (*restclient.Config, func(), error) {
+    // 证书轮换, 具体如何实施?
+    // 先不关心, 先看非证书轮换的配置
+    // 知道有这样个自动轮换的东西, 之后再来关心
 	if s.RotateCertificates && utilfeature.DefaultFeatureGate.Enabled(features.RotateKubeletClientCertificate) {
 		// Rules for client rotation and the handling of kube config files:
 		//
@@ -880,6 +920,7 @@ func getNodeName(cloud cloudprovider.Interface, hostname string) (types.NodeName
 		return types.NodeName(hostname), nil
 	}
 
+    // 如果有cloud, 从cloud获取nodeName
 	instances, ok := cloud.Instances()
 	if !ok {
 		return "", fmt.Errorf("failed to get instances from cloud provider")
@@ -1193,6 +1234,7 @@ func parseResourceList(m map[string]string) (v1.ResourceList, error) {
 
 // BootstrapKubeletConfigController constructs and bootstrap a configuration controller
 // 启动一个configuration controller: 监控dynamic configuration的变化?
+// 并返回dynamicConfiguration, controller
 func BootstrapKubeletConfigController(dynamicConfigDir string, transform dynamickubeletconfig.TransformFunc) (*kubeletconfiginternal.KubeletConfiguration, *dynamickubeletconfig.Controller, error) {
 	if !utilfeature.DefaultFeatureGate.Enabled(features.DynamicKubeletConfig) {
 		return nil, nil, fmt.Errorf("failed to bootstrap Kubelet config controller, you must enable the DynamicKubeletConfig feature gate")
@@ -1208,10 +1250,11 @@ func BootstrapKubeletConfigController(dynamicConfigDir string, transform dynamic
 	}
 	// get the latest KubeletConfiguration checkpoint from disk, or return the default config if no valid checkpoints exist
 	c := dynamickubeletconfig.NewController(dir, transform)
-	kc, err := c.Bootstrap()
+	kc, err := c.Bootstrap()        // 启动goroutine进行dynamic configuration检测
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to determine a valid configuration, error: %v", err)
 	}
+
 	return kc, c, nil
 }
 

@@ -101,6 +101,7 @@ func (cc *Controller) Bootstrap() (*kubeletconfig.KubeletConfiguration, error) {
 	utillog.Infof("starting controller")
 
 	// ensure the filesystem is initialized
+    // 保证dynamic config dir存在, 如果不存在, 创建之
 	if err := cc.initializeDynamicConfigDir(); err != nil {
 		return nil, err
 	}
@@ -115,6 +116,7 @@ func (cc *Controller) Bootstrap() (*kubeletconfig.KubeletConfiguration, error) {
 	}
 
 	// determine last-known-good source and set status
+    // 最近一次的source
 	lastKnownGoodSource, err := cc.checkpointStore.LastKnownGood()
 	if err != nil {
 		return nil, err
