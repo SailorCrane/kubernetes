@@ -34,7 +34,7 @@ type DeprecatedOptions struct {
 	PolicyConfigMapName      string
 	PolicyConfigMapNamespace string
 	UseLegacyPolicyConfig    bool
-	AlgorithmProvider        string
+	AlgorithmProvider        string // "ClusterAutoscalerProvider" or "DefaultProvider"
 }
 
 // AddFlags adds flags for the deprecated options.
@@ -44,10 +44,17 @@ func (o *DeprecatedOptions) AddFlags(fs *pflag.FlagSet, cfg *kubeschedulerconfig
 	}
 
 	// TODO: unify deprecation mechanism, string prefix or MarkDeprecated (the latter hides the flag. We also don't want that).
+    // 命令行指定algorith provider: "ClusterAutoscalerProvider" or "DefaultProvider"
 	fs.StringVar(&o.AlgorithmProvider, "algorithm-provider", o.AlgorithmProvider, "DEPRECATED: the scheduling algorithm provider to use, one of: "+factory.ListAlgorithmProviders())
+
+	// 如果提供了文件, cfg.AlgorithmSource 可以依据此文件创建
 	fs.StringVar(&o.PolicyConfigFile, "policy-config-file", o.PolicyConfigFile, "DEPRECATED: file with scheduler policy configuration. This file is used if policy ConfigMap is not provided or --use-legacy-policy-config=true")
+
 	usage := fmt.Sprintf("DEPRECATED: name of the ConfigMap object that contains scheduler's policy configuration. It must exist in the system namespace before scheduler initialization if --use-legacy-policy-config=false. The config must be provided as the value of an element in 'Data' map with the key='%v'", kubeschedulerconfig.SchedulerPolicyConfigMapKey)
+
+	// 如果提供了config map名字, cfg.AlgorithmSource 可以依据此config map创建
 	fs.StringVar(&o.PolicyConfigMapName, "policy-configmap", o.PolicyConfigMapName, usage)
+
 	fs.StringVar(&o.PolicyConfigMapNamespace, "policy-configmap-namespace", o.PolicyConfigMapNamespace, "DEPRECATED: the namespace where policy ConfigMap is located. The kube-system namespace will be used if this is not provided or is empty.")
 	fs.BoolVar(&o.UseLegacyPolicyConfig, "use-legacy-policy-config", o.UseLegacyPolicyConfig, "DEPRECATED: when set to true, scheduler will ignore policy ConfigMap and uses policy config file")
 

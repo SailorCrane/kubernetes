@@ -154,6 +154,8 @@ func (o *Options) Flags() (nfs apiserverflag.NamedFlagSets) {
 	o.CombinedInsecureServing.AddFlags(nfs.FlagSet("insecure serving"))
 	o.Authentication.AddFlags(nfs.FlagSet("authentication"))
 	o.Authorization.AddFlags(nfs.FlagSet("authorization"))
+
+    // deprecated就是用来设置ComponentConfig的, 可以查看其AddFlags()方法
 	o.Deprecated.AddFlags(nfs.FlagSet("deprecated"), &o.ComponentConfig)
 
 	leaderelectionconfig.BindFlags(&o.ComponentConfig.LeaderElection.LeaderElectionConfiguration, nfs.FlagSet("leader election"))
@@ -229,6 +231,7 @@ func (o *Options) Config() (*schedulerappconfig.Config, error) {
 		}
 	}
 
+	// 创建config
 	c := &schedulerappconfig.Config{}
 	if err := o.ApplyTo(c); err != nil {
 		return nil, err
@@ -256,7 +259,7 @@ func (o *Options) Config() (*schedulerappconfig.Config, error) {
 
 	c.Client = client
 	c.InformerFactory = informers.NewSharedInformerFactory(client, 0)
-	c.PodInformer = factory.NewPodInformer(client, 0)
+	c.PodInformer = factory.NewPodInformer(client, 0)       // podInformer 用来监控pod相关事件
 	c.EventClient = eventClient
 	c.Recorder = recorder
 	c.Broadcaster = eventBroadcaster

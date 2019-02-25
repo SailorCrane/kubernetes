@@ -2,7 +2,8 @@ sequenceDiagram
 
 cmd/scheduler->> app/server: NewSchedulerCommand()
     Note right of app/server : 设置命令行选项到option中, 并创建一个pflag cmd出来
-app/server->> cmd/scheduler: return a "cmd" object
+    Note right of app/server : 命令行设置到option中这里是通过cmd.Execute()中的cmd.Flags().Parse()做的
+app/server->> cmd/scheduler: return cobra.Command()
 
 cmd/scheduler ->> app/server: cmd.Execute()
 app/server ->> app/server: RunCommand(cmd, options)

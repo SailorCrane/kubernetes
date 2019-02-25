@@ -18,10 +18,14 @@ server ->> pflag : cleanFlagSet := pflag.NewFlagSet(componentKubelet, pflag.Cont
 pflag ->> server : return FlagSet
 
 server ->> option : kubeletFlags.AddFlags(cleanFlagSet)
-    Note right of option : 使cleanFlagSet Parse()命令行后的一些值, 存入kubeletFlags中
+    Note right of option : 使cleanFlagSet Parse()后, 命令行后的一些值, 存入kubeletFlags中
 
 server ->> option : options.AddKubeletConfigFlags(cleanFlagSet, kubeletConfig)
-    Note right of option : 使cleanFlagSet Parse()命令行后的一些值, 存入kubeletConfig中
+    Note right of option : 使cleanFlagSet Parse()后, 将命令行后的一些值, 存入kubeletConfig中
+
+server ->> pflag : cleanFlagSet.Parse(args)
+    Note right of server : 真正Parse(args)的地方
+    Note right of server : kube-apiserver, kube-scheduler中的Parse()则由cobra.cmd.Execute()中cmd.Flags().Parse()来完成
 
 
 

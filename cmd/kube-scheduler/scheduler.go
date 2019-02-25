@@ -44,6 +44,7 @@ func main() {
 	logs.InitLogs()
 	defer logs.FlushLogs()
 
+	// Execute中会执行cmd.Flags().Parse(args)
 	if err := command.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(1)

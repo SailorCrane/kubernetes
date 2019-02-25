@@ -89,10 +89,17 @@ through the API as necessary.`,
 	}
     // NOTE: fs 是cmd.Flags(), cmd.Execute()时会cmd.Flags().Parse
 	// cmd.Parse() 执行在cmd.Run()之前
+	// 至此揭开了k8s cmd解析命令行之谜
+	// 具体可以查看cobra/command.go中的ParseFlags
 	fs := cmd.Flags()
 	namedFlagSets := opts.Flags()
+
+	// 全局flag: 暂时可以不用管, 主要就是log日志存放目录等等和业务逻辑无关的配置
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
 	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
+
+	// namedFlagSets是options的FlagSet, 已经和option的各个属性绑定在一起了
+	// 将其全部移动到fs/cmd.Flags()中, cmd Parse(args)时, 会把解析后的值放入options的fileds中
 	for _, f := range namedFlagSets.FlagSets {
 		fs.AddFlagSet(f)
 	}
@@ -127,6 +134,7 @@ func runCommand(cmd *cobra.Command, args []string, opts *options.Options) error 
 		os.Exit(1)
 	}
 
+	// 配置写入文件
 	if len(opts.WriteConfigTo) > 0 {
 		if err := options.WriteConfigFile(opts.WriteConfigTo, &opts.ComponentConfig); err != nil {
 			fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -135,7 +143,7 @@ func runCommand(cmd *cobra.Command, args []string, opts *options.Options) error 
 		klog.Infof("Wrote configuration to: %s\n", opts.WriteConfigTo)
 	}
 
-	// option(命令行参数)转换为Config
+    // option ------> config : option转config
 	c, err := opts.Config()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
@@ -153,7 +161,7 @@ func runCommand(cmd *cobra.Command, args []string, opts *options.Options) error 
 
 	// Apply algorithms based on feature gates.
 	// TODO: make configurable?
-    // ApplyFeatureGates做了什么?: 根据配置开启响应特性
+    // ApplyFeatureGates做了什么 根据配置开启响应特性
 	algorithmprovider.ApplyFeatureGates()
 
 	// Configz registration.

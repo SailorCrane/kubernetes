@@ -1463,6 +1463,8 @@ func (c *Command) ParseFlags(args []string) error {
 	}
 	beforeErrorBufLen := c.flagErrorBuf.Len()
 	c.mergePersistentFlags()
+	// NOTE  c.Flags Parse(args),  c.Flags()必须提前设置好, 提前添加好所需的各个flag
+	// cmd Parse(args) 关键所在
 	err := c.Flags().Parse(args)
 	// Print warnings if they occurred (e.g. deprecated flag messages).
 	if c.flagErrorBuf.Len()-beforeErrorBufLen > 0 && err == nil {
