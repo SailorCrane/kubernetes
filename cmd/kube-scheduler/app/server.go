@@ -87,6 +87,8 @@ through the API as necessary.`,
 			}
 		},
 	}
+    // NOTE: fs 是cmd.Flags(), cmd.Execute()时会cmd.Flags().Parse
+	// cmd.Parse() 执行在cmd.Run()之前
 	fs := cmd.Flags()
 	namedFlagSets := opts.Flags()
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))

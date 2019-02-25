@@ -141,11 +141,15 @@ func newDefaultComponentConfig() (*kubeschedulerconfig.KubeSchedulerConfiguratio
 
 // Flags returns flags for a specific scheduler by section name
 func (o *Options) Flags() (nfs apiserverflag.NamedFlagSets) {
+	// nfs named flag set map[string]FlagSet
+
+	// nfs["misc"]
 	fs := nfs.FlagSet("misc")
 	fs.StringVar(&o.ConfigFile, "config", o.ConfigFile, "The path to the configuration file. Flags override values in this file.")
 	fs.StringVar(&o.WriteConfigTo, "write-config-to", o.WriteConfigTo, "If set, write the configuration values to this file and exit.")
 	fs.StringVar(&o.Master, "master", o.Master, "The address of the Kubernetes API server (overrides any value in kubeconfig)")
 
+	// nfs["secure"/"insecure"/"deprecated"]
 	o.SecureServing.AddFlags(nfs.FlagSet("secure serving"))
 	o.CombinedInsecureServing.AddFlags(nfs.FlagSet("insecure serving"))
 	o.Authentication.AddFlags(nfs.FlagSet("authentication"))
