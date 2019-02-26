@@ -443,7 +443,7 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 		filtered = nodes
 	} else {
 		allNodes := int32(g.cache.NodeTree().NumNodes())
-		numNodesToFind := g.numFeasibleNodesToFind(allNodes)
+		numNodesToFind := g.numFeasibleNodesToFind(allNodes)        // feasible node具体定义是什么,进去瞅瞅
 
 		// Create filtered list with enough space to avoid growing it
 		// and allow assigning.
@@ -459,26 +459,31 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 		// We can use the same metadata producer for all nodes.
 		meta := g.predicateMetaProducer(pod, g.cachedNodeInfoMap)
 
-        // checkNode要在后面协程中处理
+        // checkNode要在后面协程中处理: 对其中一个node判断pod是否可以在上面绑定
 		checkNode := func(i int) {
 			nodeName := g.cache.NodeTree().Next()
+
+			// 返回node是否成功predicate, 失败的predicates环节
 			fits, failedPredicates, err := podFitsOnNode(
 				pod,
 				meta,
 				g.cachedNodeInfoMap[nodeName],      // 读取node info by name
-				g.predicates,
+				g.predicates,                       // predicates函数句柄
 				g.schedulingQueue,
 				g.alwaysCheckAllPredicates,
 			)
+
 			if err != nil {
 				predicateResultLock.Lock()
 				errs[err.Error()]++
 				predicateResultLock.Unlock()
 				return
 			}
+
 			if fits {
-				length := atomic.AddInt32(&filteredLen, 1)
-				if length > numNodesToFind {
+                length := atomic.AddInt32(&filteredLen, 1) // length : 当前所有线程中已经fit的个数
+                if length > numNodesToFind {
+                    // 如果已经匹配完毕: cancel()结束所有checkNode goroutine
 					cancel()
 					atomic.AddInt32(&filteredLen, -1)
 				} else {
@@ -493,8 +498,8 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 
 		// Stops searching for more nodes once the configured number of feasible nodes
 		// are found.
-        // 使用协程对allNodes执行checkNode
-		// 用ctx控制所有的checkNode协程
+        // 开启协程对allNodes执行checkNode
+        // 用ctx控制所有的checkNode协程: 用于优化, 当提前发现可以结束时, 立即结束
 		workqueue.ParallelizeUntil(ctx, 16, int(allNodes), checkNode)
 
 		filtered = filtered[:filteredLen]
@@ -631,6 +636,8 @@ func podFitsOnNode(
 					// eCache is available and valid, and predicates result is unfit, record the fail reasons
 					failedPredicates = append(failedPredicates, reasons...)
 					// if alwaysCheckAllPredicates is false, short circuit all predicates when one predicate fails.
+					// 如果不需要强制检查所有predicates, 这里已经失败了, 不用再进行下去了
+                    // 猜测:检查所有应该只在测试环境中使用, 用来测试哪些predicate条件失败
 					if !alwaysCheckAllPredicates {
 						klog.V(5).Infoln("since alwaysCheckAllPredicates has not been set, the predicate " +
 							"evaluation is short circuited and there are chances " +
@@ -642,6 +649,7 @@ func podFitsOnNode(
 		}
 	}
 
+	// 如果没有failedPredicates, 那么通过了predicates关卡
 	return len(failedPredicates) == 0, failedPredicates, nil
 }
 

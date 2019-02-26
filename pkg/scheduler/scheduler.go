@@ -157,7 +157,7 @@ func New(client clientset.Interface,
 		StorageClassInformer:           storageClassInformer,
 		HardPodAffinitySymmetricWeight: options.hardPodAffinitySymmetricWeight,
 		DisablePreemption:              options.disablePreemption,
-		PercentageOfNodesToScore:       options.percentageOfNodesToScore,
+		PercentageOfNodesToScore:       options.percentageOfNodesToScore,       // 最高分数?
 		BindTimeoutSeconds:             options.bindTimeoutSeconds,
 	})
 	var config *factory.Config
