@@ -160,8 +160,9 @@ func runCommand(cmd *cobra.Command, args []string, opts *options.Options) error 
 	klog.Infof("Version: %+v", version.Get())
 
 	// Apply algorithms based on feature gates.
-	// TODO: make configurable?
-    // ApplyFeatureGates做了什么 根据配置开启响应特性
+    // ApplyFeatureGates设置algorithmprovider算法(包括在defaults包中init()初始化)
+	// 具体用法后面调度中再看
+	// 初始化defauts中的precidate和priority算法, 将算法设置到factory中的全局变量中
 	algorithmprovider.ApplyFeatureGates()
 
 	// Configz registration.
@@ -204,6 +205,8 @@ func Run(cc schedulerserverconfig.CompletedConfig, stopCh <-chan struct{}) error
 	// Prepare the event broadcaster.
 	if cc.Broadcaster != nil && cc.EventClient != nil {
 		cc.Broadcaster.StartLogging(klog.V(6).Infof)
+
+		// 基于cc.EventClient创建sink, cc.Recorder产生的event, 都通过sink传给apiserver
 		cc.Broadcaster.StartRecordingToSink(&v1core.EventSinkImpl{Interface: cc.EventClient.Events("")})
 	}
 
@@ -235,7 +238,7 @@ func Run(cc schedulerserverconfig.CompletedConfig, stopCh <-chan struct{}) error
 		}
 	}
 
-	// Start all informers.
+    // NOTE: Start all informers, informer的回调已经在sched中创建configurator时都设置好了
 	go cc.PodInformer.Informer().Run(stopCh)
 	cc.InformerFactory.Start(stopCh)
 
@@ -246,7 +249,9 @@ func Run(cc schedulerserverconfig.CompletedConfig, stopCh <-chan struct{}) error
 	// Prepare a reusable runCommand function.
 	run := func(ctx context.Context) {
 		sched.Run()
-		<-ctx.Done()
+
+        // NOTE: ctx没有cancel的话, 这里阻塞, 则不会返回上层函数. main函数也不会结束
+        <-ctx.Done()
 	}
 
 	ctx, cancel := context.WithCancel(context.TODO()) // TODO once Run() accepts a context, it should be used here
@@ -273,6 +278,7 @@ func Run(cc schedulerserverconfig.CompletedConfig, stopCh <-chan struct{}) error
 			return fmt.Errorf("couldn't create leader elector: %v", err)
 		}
 
+		// ctx控制run() 和 leaderElector, ctx由stopCh控制
 		leaderElector.Run(ctx)
 
 		return fmt.Errorf("lost lease")
@@ -342,6 +348,7 @@ func newHealthzHandler(config *kubeschedulerconfig.KubeSchedulerConfiguration, s
 }
 
 // NewSchedulerConfig creates the scheduler configuration. This is exposed for use by tests.
+// 用来测试, 不用理会
 func NewSchedulerConfig(s schedulerserverconfig.CompletedConfig) (*factory.Config, error) {
 	// Set up the configurator which can create schedulers from configs.
 	configurator := factory.NewConfigFactory(&factory.ConfigFactoryArgs{

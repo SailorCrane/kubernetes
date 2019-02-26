@@ -119,7 +119,10 @@ func (eventBroadcaster *eventBroadcasterImpl) StartRecordingToSink(sink EventSin
 	// new Rand object for each StartRecording call.
 	randGen := rand.New(rand.NewSource(time.Now().UnixNano()))
 	eventCorrelator := NewEventCorrelator(clock.RealClock{})
+
+	// 调用StartEventWatcher, 添加watcher?
 	return eventBroadcaster.StartEventWatcher(
+	    // 当有event事件时, 使用recordToSink(event)
 		func(event *v1.Event) {
 			recordToSink(sink, event, eventCorrelator, randGen, eventBroadcaster.sleepDuration)
 		})
@@ -139,9 +142,12 @@ func recordToSink(sink EventSink, event *v1.Event, eventCorrelator *EventCorrela
 	}
 	tries := 0
 	for {
+		// 把event放入sink中
 		if recordEvent(sink, result.Event, result.Patch, result.Event.Count > 1, eventCorrelator) {
 			break
 		}
+
+		// 如果放入sink失败, 随机等待一段时间后, 再次开始执行 recordEvent()
 		tries++
 		if tries >= maxTriesPerEvent {
 			klog.Errorf("Unable to write event '%#v' (retry limit exceeded!)", event)
@@ -171,6 +177,7 @@ func isKeyNotFoundError(err error) bool {
 // was successfully recorded or discarded, false if it should be retried.
 // If updateExistingEvent is false, it creates a new event, otherwise it updates
 // existing event.
+// 把event写入sink(这个sink是apiserver的sink, 写入后, 由apiserver处理)
 func recordEvent(sink EventSink, event *v1.Event, patch []byte, updateExistingEvent bool, eventCorrelator *EventCorrelator) bool {
 	var newEvent *v1.Event
 	var err error
@@ -226,6 +233,8 @@ func (eventBroadcaster *eventBroadcasterImpl) StartLogging(logf func(format stri
 // The return value can be ignored or used to stop recording, if desired.
 func (eventBroadcaster *eventBroadcasterImpl) StartEventWatcher(eventHandler func(*v1.Event)) watch.Interface {
 	watcher := eventBroadcaster.Watch()
+
+	// 启动协程, 对watch中的事件开始循环处理, 处理句柄为eventHandler
 	go func() {
 		defer utilruntime.HandleCrash()
 		for watchEvent := range watcher.ResultChan() {
@@ -238,6 +247,7 @@ func (eventBroadcaster *eventBroadcasterImpl) StartEventWatcher(eventHandler fun
 			eventHandler(event)
 		}
 	}()
+
 	return watcher
 }
 

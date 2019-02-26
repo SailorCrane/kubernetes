@@ -112,6 +112,7 @@ func (b *Broadcaster) blockQueue(f func()) {
 // Watch adds a new watcher to the list and returns an Interface for it.
 // Note: new watchers will only receive new events. They won't get an entire history
 // of previous events.
+// 添加watcher
 func (m *Broadcaster) Watch() Interface {
 	var w *broadcasterWatcher
 	m.blockQueue(func() {

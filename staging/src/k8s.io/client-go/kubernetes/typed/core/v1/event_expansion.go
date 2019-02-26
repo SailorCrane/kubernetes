@@ -50,6 +50,7 @@ func (e *events) CreateWithEventNamespace(event *v1.Event) (*v1.Event, error) {
 		return nil, fmt.Errorf("can't create an event with namespace '%v' in namespace '%v'", event.Namespace, e.ns)
 	}
 	result := &v1.Event{}
+	// event.client是从哪里来的
 	err := e.client.Post().
 		NamespaceIfScoped(event.Namespace, len(event.Namespace) > 0).
 		Resource("events").

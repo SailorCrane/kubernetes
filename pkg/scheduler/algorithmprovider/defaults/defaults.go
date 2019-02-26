@@ -33,6 +33,9 @@ const (
 	ClusterAutoscalerProvider = "ClusterAutoscalerProvider"
 )
 
+// 在这里注册了调度算法Provider
+// 并在还在当前包下的: register_predicates中注册了predicates算法
+//                   : register_priorities中注册了priorities算法
 func init() {
 	registerAlgorithmProvider(defaultPredicates(), defaultPriorities())
 }

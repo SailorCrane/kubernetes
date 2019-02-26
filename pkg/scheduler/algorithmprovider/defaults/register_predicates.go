@@ -48,9 +48,14 @@ func init() {
 	// predicates.GeneralPredicates()
 	factory.RegisterFitPredicate(predicates.HostNamePred, predicates.PodFitsHost)
 	// Fit is determined by node selector query.
+
+	// 创建"MatchNodeSelector" predicate
+	// 直接注册算法, 最终也是注册为Factory
 	factory.RegisterFitPredicate(predicates.MatchNodeSelectorPred, predicates.PodMatchNodeSelector)
 
 	// Fit is determined by volume zone requirements.
+	// 创建 "NoVolumeZoneConflict" predicates
+	// 注册Factory
 	factory.RegisterFitPredicateFactory(
 		predicates.NoVolumeZoneConflictPred,
 		func(args factory.PluginFactoryArgs) predicates.FitPredicate {

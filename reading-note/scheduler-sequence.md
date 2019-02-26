@@ -12,7 +12,16 @@ app/server ->> app/server: RunCommand(cmd, options)
         Note right of app/options : config内含kube client(用来连接kube-apiserver)
     app/options ->> app/server: return config
     app/server ->> pkg/scheduler/algorithm: algorithmprovider.ApplyFeatureGates()
-        Note right of pkg/scheduler/algorithm: 根据feature gate选项, 配置scheduler开启的选项
+        Note right of pkg/scheduler/algorithm: 根据feature gate选项中关于algorithm policy的部分, 配置algorithm
+
+    # defaults :/myOwn/mySaved/kubernetes-src/pkg/scheduler/algorithmprovider/defaults/defaults.go
+    pkg/scheduler/algorithm ->> defaults : init()
+    defaults ->> defaults : registerAlgorithmProvider(defaultPredicates(), defaultPriorities())
+        Note right of defaults : 在factory中注册algorithm provider
+    pkg/scheduler/algorithm ->> defaults : register_predicates.init()
+        Note right of defaults : 在factory中注册predicate算法
+    pkg/scheduler/algorithm ->> defaults : register_priorities.init()
+        Note right of defaults : 在factory中注册priority算法
 
 app/server ->> app/server: Run(cc/completedConfig, stopCh)
         app/server ->> pkg/scheduler/scheduler: scheduler.New(cc.PodInformer, cc.InformerFactory)

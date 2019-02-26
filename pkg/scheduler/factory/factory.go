@@ -770,7 +770,7 @@ func (c *configFactory) CreateFromConfig(policy schedulerapi.Policy) (*Config, e
 	} else {
 		for _, predicate := range policy.Predicates {
 			klog.V(2).Infof("Registering predicate: %s", predicate.Name)
-			predicateKeys.Insert(RegisterCustomFitPredicate(predicate))
+			predicateKeys.Insert(RegisterCustomFitPredicate(predicate))     // custom
 		}
 	}
 
@@ -840,6 +840,8 @@ func (c *configFactory) getBinderFunc(extenders []algorithm.SchedulerExtender) f
 }
 
 // Creates a scheduler from a set of registered fit predicate keys and priority keys.
+// NOTE: 创建sched的config, 其中调度优先级algo/scheduler 的predicates等funcs就是在这里设置的
+// predicateKeys是使用哪些指标来predicate: pod, volume, memory等等
 func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, extenders []algorithm.SchedulerExtender) (*Config, error) {
 	klog.V(2).Infof("Creating scheduler with fit predicates '%v' and priority functions '%v'", predicateKeys, priorityKeys)
 
@@ -868,6 +870,7 @@ func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, 
 	}
 
 	// TODO(bsalamat): the default registrar should be able to process config files.
+    // TODO: pluginSet到底是干嘛的?
 	c.pluginSet = plugins.NewDefaultPluginSet(pluginsv1alpha1.NewPluginContext(), &c.schedulerCache)
 
     // NOTE: 算法列表 NewGenericScheduler
@@ -894,7 +897,7 @@ func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, 
 		SchedulerCache: c.schedulerCache,
 		// The scheduler only needs to consider schedulable nodes.
 		NodeLister:          &nodeLister{c.nodeLister},
-		Algorithm:           algo,
+		Algorithm:           algo,                          // NOTE: sched.config.Algorithm中存放这predicatesFuncs, priorityMetaProducer
 		GetBinder:           c.getBinderFunc(extenders),
 		PodConditionUpdater: &podConditionUpdater{c.client},
 		PodPreemptor:        &podPreemptor{c.client},
@@ -947,7 +950,7 @@ func (c *configFactory) GetPredicateMetadataProducer() (predicates.PredicateMeta
 }
 
 func (c *configFactory) GetPredicates(predicateKeys sets.String) (map[string]predicates.FitPredicate, error) {
-	pluginArgs, err := c.getPluginArgs()
+    pluginArgs, err := c.getPluginArgs()        // plugin args: 是获取apiserver 资源的一些函数句柄
 	if err != nil {
 		return nil, err
 	}

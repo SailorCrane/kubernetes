@@ -140,6 +140,8 @@ func New(client clientset.Interface,
 	}
 
 	// Set up the configurator which can create schedulers from configs.
+	// configurator用来 创建sched的配置
+    // NOTE: configurator是一个factory, 在创建时绑定了pod事件的handler
 	configurator := factory.NewConfigFactory(&factory.ConfigFactoryArgs{
 		SchedulerName:                  options.schedulerName,
 		Client:                         client,
@@ -191,6 +193,7 @@ func New(client clientset.Interface,
 		return nil, fmt.Errorf("unsupported algorithm source: %v", source)
 	}
 	// Additional tweaks to the config produced by the configurator.
+	// 查看recorder后期如何使用, 如果产生事件
 	config.Recorder = recorder
 	config.DisablePreemption = options.disablePreemption
 	config.StopEverything = stopCh
@@ -269,8 +272,8 @@ func (sched *Scheduler) Run() {
 		return
 	}
 
-    // scheduler的主要工作在scheduleOne中
-    // wait.Until会循环执行sched.scheduleOne, 直到StopEverything
+	// scheduler的主要工作在scheduleOne中
+	// wait.Until会循环执行sched.scheduleOne, 直到StopEverything
 	go wait.Until(sched.scheduleOne, 0, sched.config.StopEverything)
 }
 

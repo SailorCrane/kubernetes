@@ -246,6 +246,8 @@ func (o *Options) Config() (*schedulerappconfig.Config, error) {
 
 	// Prepare event clients.
 	eventBroadcaster := record.NewBroadcaster()
+
+	// recorder 和 eventBroadcaster关联起来, recorder添加的事件, 会被eventBroadcaster广播
 	recorder := eventBroadcaster.NewRecorder(legacyscheme.Scheme, corev1.EventSource{Component: c.ComponentConfig.SchedulerName})
 
 	// Set up leader election if enabled.

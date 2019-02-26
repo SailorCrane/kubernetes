@@ -409,6 +409,7 @@ func GetAlgorithmProvider(name string) (*AlgorithmProviderConfig, error) {
 }
 
 func getFitPredicateFunctions(names sets.String, args PluginFactoryArgs) (map[string]predicates.FitPredicate, error) {
+	// TODO: 查看如果根据names获取functions
 	schedulerFactoryMutex.Lock()
 	defer schedulerFactoryMutex.Unlock()
 
@@ -418,7 +419,7 @@ func getFitPredicateFunctions(names sets.String, args PluginFactoryArgs) (map[st
 		if !ok {
 			return nil, fmt.Errorf("Invalid predicate name %q specified - no corresponding function found", name)
 		}
-		predicates[name] = factory(args)
+		predicates[name] = factory(args)        // 调用factory(args) 获取func, args是获取一些apiserver资源的句柄
 	}
 
 	// Always include mandatory fit predicates.
