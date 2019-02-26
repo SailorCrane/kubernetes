@@ -60,10 +60,12 @@ func ParallelizeUntil(ctx context.Context, workers, pieces int, doWorkPiece DoWo
 			defer utilruntime.HandleCrash()
 			defer wg.Done()
 
-            // 从toProcess读取piece索引, 并做出处理
+			// 从toProcess读取piece索引, 并做出处理(toProcess是channel, 可以并发读)
 			for piece := range toProcess {
 				select {
 				case <-stop:
+					// 如果ctx结束, 那么这里返回, 不再处理piece
+                    // 可以看出: 如果ctx通知ParallelizeUntil结束, 需要在一个doWorkPiece()完全处理完毕后
 					return
 				default:
 					doWorkPiece(piece)

@@ -259,6 +259,8 @@ func (eventBroadcaster *eventBroadcasterImpl) NewRecorder(scheme *runtime.Scheme
 type recorderImpl struct {
 	scheme *runtime.Scheme
 	source v1.EventSource
+	// NOTE: 继承自Broadcaster, 所以recorder.generateEvent()调用Action()时
+	// 调用的实际是 Broadcaster的Action(), Broadcaster又继承自 watch/mux/Broadcaster
 	*watch.Broadcaster
 	clock clock.Clock
 }

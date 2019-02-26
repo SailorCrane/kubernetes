@@ -175,7 +175,8 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 		return result, ErrNoNodesAvailable
 	}
 
-    // 获取所有node的信息, predicate filter要用
+	// 获取所有node的最新信息(信息是会变动的, 比如内存, volumn), predicate filter要用
+	// snapshot的信息放在cache中
 	if err := g.snapshot(); err != nil {
 		return result, err
 	}
@@ -431,11 +432,14 @@ func (g *genericScheduler) numFeasibleNodesToFind(numAllNodes int32) (numNodes i
 // Filters the nodes to find the ones that fit based on the given predicate functions
 // Each node is passed through the predicate functions to determine if it is a fit
 // NOTE: predicate代码: 根据predicates策略, 过滤不符合predicates的node. 剩下的node可以进入"优选"阶段
+// 算法是defaults/defaults init()初始化时, 在factory中添加好的
 func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v1.Node, FailedPredicateMap, error) {
 	var filtered []*v1.Node     // 返回达到predicate标准的 Node
 	failedPredicateMap := FailedPredicateMap{}
 
 	if len(g.predicates) == 0 {
+		// 如果predicates是空的, 返回全部nodes
+		// 什么场景下, 或者kube-scheduler指定什么参数会出现这种情况, 测试时?
 		filtered = nodes
 	} else {
 		allNodes := int32(g.cache.NodeTree().NumNodes())
@@ -455,6 +459,7 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 		// We can use the same metadata producer for all nodes.
 		meta := g.predicateMetaProducer(pod, g.cachedNodeInfoMap)
 
+        // checkNode要在后面协程中处理
 		checkNode := func(i int) {
 			nodeName := g.cache.NodeTree().Next()
 			fits, failedPredicates, err := podFitsOnNode(
@@ -489,6 +494,7 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 		// Stops searching for more nodes once the configured number of feasible nodes
 		// are found.
         // 使用协程对allNodes执行checkNode
+		// 用ctx控制所有的checkNode协程
 		workqueue.ParallelizeUntil(ctx, 16, int(allNodes), checkNode)
 
 		filtered = filtered[:filteredLen]

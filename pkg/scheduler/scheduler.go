@@ -457,7 +457,9 @@ func (sched *Scheduler) bind(assumed *v1.Pod, b *v1.Binding) error {
 	metrics.BindingLatency.Observe(metrics.SinceInMicroseconds(bindingStart))
 	metrics.SchedulingLatency.WithLabelValues(metrics.Binding).Observe(metrics.SinceInSeconds(bindingStart))
 
-    // 发送绑定成功信号
+	// 发送绑定成功信号
+	// sched.config.Recorder中发送的信号, 由 sched.config.Broadcaster中的watcher处理
+	// 这里的watcher把event放入sink(kube-client), 然后发送给apiserver
 	sched.config.Recorder.Eventf(assumed, v1.EventTypeNormal, "Scheduled", "Successfully assigned %v/%v to %v", assumed.Namespace, assumed.Name, b.Target.Name)
 	return nil
 }
