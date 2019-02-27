@@ -183,6 +183,8 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 
 	trace.Step("Computing predicates")
 	startPredicateEvalTime := time.Now()
+
+	// predicate 过程结束, 过滤出的node放入filteredNodes中
 	filteredNodes, failedPredicateMap, err := g.findNodesThatFit(pod, nodes)
 	if err != nil {
 		return result, err
@@ -195,13 +197,15 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 			FailedPredicates: failedPredicateMap,
 		}
 	}
-    // 记录predicate用时, 不知道是用来干嘛的
+
+    // 记录predicate用时长, 用来做profile
 	metrics.SchedulingAlgorithmPredicateEvaluationDuration.Observe(metrics.SinceInMicroseconds(startPredicateEvalTime))
 	metrics.SchedulingLatency.WithLabelValues(metrics.PredicateEvaluation).Observe(metrics.SinceInSeconds(startPredicateEvalTime))
 
 	trace.Step("Prioritizing")
 	startPriorityEvalTime := time.Now()
 	// When only one node after predicate, just use it.
+	// 在单节点kubelet, 或者节点很少时, 可能会经常发生
 	if len(filteredNodes) == 1 {
 		metrics.SchedulingAlgorithmPriorityEvaluationDuration.Observe(metrics.SinceInMicroseconds(startPriorityEvalTime))
 		return ScheduleResult{
@@ -213,8 +217,8 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 
 	metaPrioritiesInterface := g.priorityMetaProducer(pod, g.cachedNodeInfoMap)
 
-    // priority: 在predicate过滤出来的filtered中, 选择score weight最优的node
-    // priorityList是每个node的得分
+	// priority: 在predicate过滤出来的filtered中, 选择score weight最优的node
+	// priorityList是每个node的得分
 	priorityList, err := PrioritizeNodes(pod, g.cachedNodeInfoMap, metaPrioritiesInterface, g.prioritizers, filteredNodes, g.extenders)
 	if err != nil {
 		return result, err
@@ -226,10 +230,11 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 
     // 根据分数, 选出一个合适的node来
 	host, err := g.selectHost(priorityList)
+
 	return ScheduleResult{
-		SuggestedHost:  host,
-		EvaluatedNodes: len(filteredNodes) + len(failedPredicateMap),
-		FeasibleNodes:  len(filteredNodes),
+		SuggestedHost:  host,           // 最合适的
+		EvaluatedNodes: len(filteredNodes) + len(failedPredicateMap),       // all nodes
+		FeasibleNodes:  len(filteredNodes),     // 次合适的candidate
 	}, err
 }
 
@@ -264,6 +269,7 @@ func findMaxScores(priorityList schedulerapi.HostPriorityList) []int {
 // selectHost takes a prioritized list of nodes and then picks one
 // in a round-robin manner from the nodes that had the highest score.
 func (g *genericScheduler) selectHost(priorityList schedulerapi.HostPriorityList) (string, error) {
+// 寻找最大分数, 并且尽量均匀选择by lastNodeIndex
 	if len(priorityList) == 0 {
 		return "", fmt.Errorf("empty priorityList")
 	}
@@ -281,6 +287,7 @@ func (g *genericScheduler) selectHost(priorityList schedulerapi.HostPriorityList
 // 3) A list of pods whose nominated node name should be cleared, and 4) any
 // possible error.
 func (g *genericScheduler) Preempt(pod *v1.Pod, nodeLister algorithm.NodeLister, scheduleErr error) (*v1.Node, []*v1.Pod, []*v1.Pod, error) {
+	// 抢占式调度, 寻找一个victims被evict, 然后调度preemptor
 	// Scheduler may return various types of errors. Consider preemption only if
 	// the error is of type FitError.
 	fitError, ok := scheduleErr.(*FitError)
@@ -415,12 +422,19 @@ func (g *genericScheduler) numFeasibleNodesToFind(numAllNodes int32) (numNodes i
 
 	adaptivePercentage := g.percentageOfNodesToScore
 	if adaptivePercentage <= 0 {
+        // 假如有 5个node: adaptivePercentage = 50 - 5 / 125 == 49.96
 		adaptivePercentage = schedulerapi.DefaultPercentageOfNodesToScore - numAllNodes/125
 		if adaptivePercentage < minFeasibleNodesPercentageToFind {
 			adaptivePercentage = minFeasibleNodesPercentageToFind
 		}
 	}
 
+    // 假如有 5个node: adaptivePercentage = 50 - 5 / 125 == 49.96
+	// numNodes = 5 * 49.96 / 100 == 2.498, 远小于 minFeasibleNodesToFind
+	// 所以返回 minFeasibleNodesToFind == 100
+	// 最少也要处理100个节点, 如果节点数小于100, 全部处理
+	// 但如果节点数有500个: 返回 n * (50 - n / 125) / 100 == (n/2 - 4/5 *(n^2)), 大约predicate需要 1/2 * n个节点
+	// 但这个算法从何而来?
 	numNodes = numAllNodes * adaptivePercentage / 100
 	if numNodes < minFeasibleNodesToFind {
 		return minFeasibleNodesToFind
@@ -510,7 +524,10 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 		}
 	}
 
-    // 使用extenders再过滤一遍filtered
+	// 使用extenders再过滤一遍filtered
+	// 但并不清楚extenders是什么东西, 跟踪generic_scheduler/algorithm创建过程查看下
+	// NOTE: 经过代码跟踪查看: extender是用户自定义的filter 插件
+	// github有一些extenders example可以查看
 	if len(filtered) > 0 && len(g.extenders) != 0 {
 		for _, extender := range g.extenders {
 			if !extender.IsInterested(pod) {
@@ -741,6 +758,7 @@ func PrioritizeNodes(
 		wg.Add(1)
 		go func(index int) {
 			defer wg.Done()
+			// priority的一些reduce函数, 不是用来计算总分, 可能是reduce中做一些什么操作
 			if err := priorityConfigs[index].Reduce(pod, meta, nodeNameToInfo, results[index]); err != nil {
 				appendError(err)
 			}
@@ -770,6 +788,7 @@ func PrioritizeNodes(
 
     // extenders是干嘛的? 在predicates中已经出现过了
     // 猜测: 猜测extenders是以用户可以custom并类似于插件的方式提供
+    // 已验证:extender是插件, 应该是用http方式提供的
 	if len(extenders) != 0 && nodes != nil {
         // 计算combineScores
 		combinedScores := make(map[string]int, len(nodeNameToInfo))

@@ -133,7 +133,7 @@ func newDefaultComponentConfig() (*kubeschedulerconfig.KubeSchedulerConfiguratio
 	// 返回 option.ComponentConfig, 其中有 PercentageOfNodesToScore
 	cfgv1alpha1 := kubeschedulerconfigv1alpha1.KubeSchedulerConfiguration{}
 
-	// PercentageOfNodesToScore在这里设置的吗?
+	// PercentageOfNodesToScore在这里设置的吗, 不太重要, 但是好奇
 	kubeschedulerscheme.Scheme.Default(&cfgv1alpha1)
 	cfg := kubeschedulerconfig.KubeSchedulerConfiguration{}
 	if err := kubeschedulerscheme.Scheme.Convert(&cfgv1alpha1, &cfg, nil); err != nil {

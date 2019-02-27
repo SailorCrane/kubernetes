@@ -191,7 +191,7 @@ func Run(cc schedulerserverconfig.CompletedConfig, stopCh <-chan struct{}) error
 		cc.InformerFactory.Policy().V1beta1().PodDisruptionBudgets(),
 		cc.InformerFactory.Storage().V1().StorageClasses(),
 		cc.Recorder,
-		cc.ComponentConfig.AlgorithmSource,         // scheduler算法
+		cc.ComponentConfig.AlgorithmSource,         // scheduler算法: 可以是--algorithm-provider, 可以使config file, 可以使configmap
 		stopCh,
 		scheduler.WithName(cc.ComponentConfig.SchedulerName),
 		scheduler.WithHardPodAffinitySymmetricWeight(cc.ComponentConfig.HardPodAffinitySymmetricWeight),

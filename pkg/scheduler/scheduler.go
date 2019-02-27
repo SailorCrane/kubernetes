@@ -288,6 +288,8 @@ func (sched *Scheduler) Config() *factory.Config {
 func (sched *Scheduler) recordSchedulingFailure(pod *v1.Pod, err error, reason string, message string) {
 	sched.config.Error(pod, err)
 	sched.config.Recorder.Event(pod, v1.EventTypeWarning, "FailedScheduling", message)
+
+	// 更新pod condition
 	sched.config.PodConditionUpdater.Update(pod, &v1.PodCondition{
 		Type:          v1.PodScheduled,
 		Status:        v1.ConditionFalse,
@@ -314,6 +316,7 @@ func (sched *Scheduler) schedule(pod *v1.Pod) (core.ScheduleResult, error) {
 // If it succeeds, it adds the name of the node where preemption has happened to the pod annotations.
 // It returns the node name and an error if any.
 func (sched *Scheduler) preempt(preemptor *v1.Pod, scheduleErr error) (string, error) {
+	// TODO 后续再读
 	preemptor, err := sched.config.PodPreemptor.GetUpdatedPod(preemptor)
 	if err != nil {
 		klog.Errorf("Error getting the updated preemptor pod object: %v", err)
@@ -365,8 +368,8 @@ func (sched *Scheduler) preempt(preemptor *v1.Pod, scheduleErr error) (string, e
 }
 
 // assumeVolumes will update the volume cache with the chosen bindings
-//
 // This function modifies assumed if volume binding is required.
+// 更新volume cache
 func (sched *Scheduler) assumeVolumes(assumed *v1.Pod, host string) (allBound bool, err error) {
 	allBound, err = sched.config.VolumeBinder.Binder.AssumePodVolumes(assumed, host)
 	if err != nil {
@@ -425,7 +428,9 @@ func (sched *Scheduler) assume(assumed *v1.Pod, host string) error {
 			fmt.Sprintf("AssumePod failed: %v", err))
 		return err
 	}
+
 	// if "assumed" is a nominated pod, we should remove it from internal cache
+	// 这里也没有看懂?
 	if sched.config.SchedulingQueue != nil {
 		sched.config.SchedulingQueue.DeleteNominatedPodIfExists(assumed)
 	}
@@ -446,9 +451,13 @@ func (sched *Scheduler) bind(assumed *v1.Pod, b *v1.Binding) error {
 	}
 	if err != nil {
 		klog.V(1).Infof("Failed to bind pod: %v/%v", assumed.Namespace, assumed.Name)
+
+		// 调度失败:  删除cache中记录的正在bind的pod信息
 		if err := sched.config.SchedulerCache.ForgetPod(assumed); err != nil {
 			klog.Errorf("scheduler cache ForgetPod failed: %v", err)
 		}
+
+		// 调度失败:  发送调度失败事件
 		sched.recordSchedulingFailure(assumed, err, SchedulerError,
 			fmt.Sprintf("Binding rejected: %v", err))
 		return err
@@ -489,7 +498,7 @@ func (sched *Scheduler) scheduleOne() {
 	// Synchronously attempt to find a fit for the pod.
 	start := time.Now()
 
-    // 现在开始寻找一个合适的node for pod
+	// 寻找一个最合适的node for pod
 	scheduleResult, err := sched.schedule(pod)
 	if err != nil {
 		// schedule() may have failed because the pod would not fit on any host, so we try to
@@ -497,7 +506,10 @@ func (sched *Scheduler) scheduleOne() {
 		// will fit due to the preemption. It is also possible that a different pod will schedule
 		// into the resources that were preempted, but this is harmless.
 
-        // 如果调度失败, 并不放弃: 还要使用preemption方式再尝试调度
+		// 如果调度失败, 并不放弃: 还要使用preemption方式再尝试调度
+		// TODO: preemption具体细节? 还不清楚
+		// 清楚了: preempt(evict) : 应该是停止low priority pod, 然后运行当前pod
+		// NOTE: 有什么不明白的, google k8s + 关键词, 查看相应文档就明白了
 		if fitError, ok := err.(*core.FitError); ok {
 			if !util.PodPriorityEnabled() || sched.config.DisablePreemption {
 				klog.V(3).Infof("Pod priority feature is not enabled or preemption is disabled by scheduler configuration." +
@@ -505,7 +517,7 @@ func (sched *Scheduler) scheduleOne() {
 			} else {
                 // 使用 preempt调度pod到Node, 具体是干嘛? 不懂
 				preemptionStartTime := time.Now()
-				sched.preempt(pod, fitError)
+				sched.preempt(pod, fitError)            // 开始preempt
 				metrics.PreemptionAttempts.Inc()
 				metrics.SchedulingAlgorithmPremptionEvaluationDuration.Observe(metrics.SinceInMicroseconds(preemptionStartTime))
 				metrics.SchedulingLatency.WithLabelValues(metrics.PreemptionEvaluation).Observe(metrics.SinceInSeconds(preemptionStartTime))
@@ -521,8 +533,7 @@ func (sched *Scheduler) scheduleOne() {
 		return
 	}
 
-    // 记录scheduler所用时长, 用来干嘛?
-    // 估计是用来做profile/log/predicate的
+    // 记录scheduler所用时长, 估计是用来做profile/log/predicate的
 	metrics.SchedulingAlgorithmLatency.Observe(metrics.SinceInMicroseconds(start))
 
 	// Tell the cache to assume that a pod now is running on a given node, even though it hasn't been bound yet.
@@ -539,7 +550,7 @@ func (sched *Scheduler) scheduleOne() {
 	// Otherwise, binding of volumes is started after the pod is assumed, but before pod binding.
 	//
 	// This function modifies 'assumedPod' if volume binding is required.
-    // 绑定volume?
+	// 绑定volume?, 和pod的volume相关的, 暂时可以先不看
 	allBound, err := sched.assumeVolumes(assumedPod, scheduleResult.SuggestedHost)
 	if err != nil {
 		klog.Errorf("error assuming volumes: %v", err)
@@ -548,7 +559,7 @@ func (sched *Scheduler) scheduleOne() {
 	}
 
 	// Run "reserve" plugins.
-    // 猜测是pod运行前的插件, 如果是这样, 可否为每个pod装入fluent-bit agent, 用来收集日志?但是fluent-bit也要指定日志目录
+	// 猜测是pod运行前的插件, 如果是这样, 可否为每个pod装入fluent-bit agent, 用来收集日志?但是fluent-bit也要指定日志目录
 	for _, pl := range plugins.ReservePlugins() {
 		if err := pl.Reserve(plugins, assumedPod, scheduleResult.SuggestedHost); err != nil {
 			klog.Errorf("error while running %v reserve plugin for pod %v: %v", pl.Name(), assumedPod.Name, err)
@@ -560,16 +571,22 @@ func (sched *Scheduler) scheduleOne() {
 	}
 
 	// assume modifies `assumedPod` by setting NodeName=scheduleResult.SuggestedHost
+	// 正式绑定之前的assume会先缓存pod到"绑定中"缓存区, 防止绑定过程中再次绑定
+	// 但是为什么会发生多次绑定呢?, 是api-server在超时后会再次触发定时器吗?还是什么原因导致?
+	// 添加新node/删除pod/node资源更新等 会触发再次schedule pod吗?
 	err = sched.assume(assumedPod, scheduleResult.SuggestedHost)
 	if err != nil {
 		klog.Errorf("error assuming pod: %v", err)
 		metrics.PodScheduleErrors.Inc()
 		return
 	}
+
 	// bind the pod to its host asynchronously (we can do this b/c of the assumption step above).
+	// 开始绑定pod到Node中
 	go func() {
 		// Bind volumes first before Pod
 		if !allBound {
+			// assumeVolumes和bindVolumes关系, 类似于assume()和bind之间的关系?
 			err := sched.bindVolumes(assumedPod)
 			if err != nil {
 				klog.Errorf("error binding volumes: %v", err)
@@ -605,13 +622,14 @@ func (sched *Scheduler) scheduleOne() {
 		// 将pod bind到host中
 		err := sched.bind(assumedPod, &v1.Binding{
 			ObjectMeta: metav1.ObjectMeta{Namespace: assumedPod.Namespace, Name: assumedPod.Name, UID: assumedPod.UID},
+
 			Target: v1.ObjectReference{
 				Kind: "Node",
-				Name: scheduleResult.SuggestedHost,
+				Name: scheduleResult.SuggestedHost,     // 绑定到此host
 			},
 		})
 
-        // E2eSchedulingLatency是一个histogram对象, 用来根据数据画直方图?
+        // E2eSchedulingLatency是一个histogram对象, 用来根据数据画直方图. 大概是用来做profile的
 		metrics.E2eSchedulingLatency.Observe(metrics.SinceInMicroseconds(start))
 		if err != nil {
 			klog.Errorf("error binding pod: %v", err)

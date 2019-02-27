@@ -747,6 +747,8 @@ func (c *configFactory) CreateFromProvider(providerName string) (*Config, error)
 	if err != nil {
 		return nil, err
 	}
+
+	// 这里使用默认extender, algorithm.SchedulerExtender是一个接口定义, 这里是一个空的extenders数组
 	return c.CreateFromKeys(provider.FitPredicateKeys, provider.PriorityFunctionKeys, []algorithm.SchedulerExtender{})
 }
 
@@ -789,6 +791,8 @@ func (c *configFactory) CreateFromConfig(policy schedulerapi.Policy) (*Config, e
 		}
 	}
 
+	// extendders可以在配置文件中定义, 在github上找一个example config配置,
+	// 根据找到的自定义extender example, 看一下extender到底是个什么东西
 	var extenders []algorithm.SchedulerExtender
 	if len(policy.ExtenderConfigs) != 0 {
 		ignoredExtendedResources := sets.NewString()
@@ -870,11 +874,12 @@ func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, 
 	}
 
 	// TODO(bsalamat): the default registrar should be able to process config files.
-    // TODO: pluginSet到底是干嘛的?
+	// TODO: pluginSet到底是干嘛的: 答, 在bing pod ------> node之前被调用
+	// 查看 pkg/scheduler/scheduler中SchedulerOne()可以看到
 	c.pluginSet = plugins.NewDefaultPluginSet(pluginsv1alpha1.NewPluginContext(), &c.schedulerCache)
 
-    // NOTE: 算法列表 NewGenericScheduler
-    // TODO: 如果需要定制, 就在这里定制算法
+	// NOTE: 算法列表 NewGenericScheduler
+	// TODO: 如果需要定制, 就在这里定制算法
 	algo := core.NewGenericScheduler(
 		c.schedulerCache,
 		c.podQueue,
