@@ -125,19 +125,25 @@ func (cache *schedulerCache) Snapshot() *Snapshot {
 }
 
 func (cache *schedulerCache) UpdateNodeNameToInfoMap(nodeNameToInfo map[string]*schedulernodeinfo.NodeInfo) error {
+	// 跟新传入的nodeNameToInfo中的信息
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 
 	for name, info := range cache.nodes {
+		// 更新传入的信息
 		if utilfeature.DefaultFeatureGate.Enabled(features.BalanceAttachedNodeVolumes) && info.TransientInfo != nil {
 			// Transient scheduler info is reset here.
 			info.TransientInfo.ResetTransientSchedulerInfo()
 		}
+
+        // 如果信息不同代, 以当前信息为主: 更新传入的信息
 		if current, ok := nodeNameToInfo[name]; !ok || current.GetGeneration() != info.GetGeneration() {
 			nodeNameToInfo[name] = info.Clone()
 		}
 	}
+
 	for name := range nodeNameToInfo {
+		// 删除已经过期的node节点信息
 		if _, ok := cache.nodes[name]; !ok {
 			delete(nodeNameToInfo, name)
 		}
@@ -247,6 +253,7 @@ func (cache *schedulerCache) ForgetPod(pod *v1.Pod) error {
 
 // Assumes that lock is already acquired.
 func (cache *schedulerCache) addPod(pod *v1.Pod) {
+	// 把pod添加到node cache中
 	n, ok := cache.nodes[pod.Spec.NodeName]
 	if !ok {
 		n = schedulernodeinfo.NewNodeInfo()

@@ -285,11 +285,12 @@ func (sched *Scheduler) Config() *factory.Config {
 // recordFailedSchedulingEvent records an event for the pod that indicates the
 // pod has failed to schedule.
 // NOTE: This function modifies "pod". "pod" should be copied before being passed.
+// 在predicate失败, assume失败, bind失败, 都会调用这里更新pod状态, 告知失败原因
 func (sched *Scheduler) recordSchedulingFailure(pod *v1.Pod, err error, reason string, message string) {
 	sched.config.Error(pod, err)
 	sched.config.Recorder.Event(pod, v1.EventTypeWarning, "FailedScheduling", message)
 
-	// 更新pod condition
+    // 更新pod condition: 会触发pod事件
 	sched.config.PodConditionUpdater.Update(pod, &v1.PodCondition{
 		Type:          v1.PodScheduled,
 		Status:        v1.ConditionFalse,
@@ -306,6 +307,8 @@ func (sched *Scheduler) schedule(pod *v1.Pod) (core.ScheduleResult, error) {
 	result, err := sched.config.Algorithm.Schedule(pod, sched.config.NodeLister)
 	if err != nil {
 		pod = pod.DeepCopy()
+
+		// 如果调度失败: 更新pod condition状态(会重新加入ActiveQ)
 		sched.recordSchedulingFailure(pod, err, v1.PodReasonUnschedulable, err.Error())
 		return core.ScheduleResult{}, err
 	}
@@ -316,7 +319,8 @@ func (sched *Scheduler) schedule(pod *v1.Pod) (core.ScheduleResult, error) {
 // If it succeeds, it adds the name of the node where preemption has happened to the pod annotations.
 // It returns the node name and an error if any.
 func (sched *Scheduler) preempt(preemptor *v1.Pod, scheduleErr error) (string, error) {
-	// TODO 后续再读
+
+	// TODO: GetUpdatedPod具体是做什么, 在factory中
 	preemptor, err := sched.config.PodPreemptor.GetUpdatedPod(preemptor)
 	if err != nil {
 		klog.Errorf("Error getting the updated preemptor pod object: %v", err)
@@ -334,9 +338,12 @@ func (sched *Scheduler) preempt(preemptor *v1.Pod, scheduleErr error) (string, e
 		// Update the scheduling queue with the nominated pod information. Without
 		// this, there would be a race condition between the next scheduling cycle
 		// and the time the scheduler receives a Pod Update for the nominated pod.
+		// 并没有立即调度: 而是放入node的nominated pod
 		sched.config.SchedulingQueue.UpdateNominatedPodForNode(preemptor, nodeName)
 
 		// Make a call to update nominated node name of the pod on the API server.
+
+		// 设置 nominated名字, 会导致podLister事件被触发吗?
 		err = sched.config.PodPreemptor.SetNominatedNodeName(preemptor, nodeName)
 		if err != nil {
 			klog.Errorf("Error in preemption process. Cannot update pod %v/%v annotations: %v", preemptor.Namespace, preemptor.Name, err)
@@ -345,6 +352,7 @@ func (sched *Scheduler) preempt(preemptor *v1.Pod, scheduleErr error) (string, e
 		}
 
 		for _, victim := range victims {
+			// 销毁低priority的node
 			if err := sched.config.PodPreemptor.DeletePod(victim); err != nil {
 				klog.Errorf("Error preempting pod %v/%v: %v", victim.Namespace, victim.Name, err)
 				return "", err
@@ -358,6 +366,7 @@ func (sched *Scheduler) preempt(preemptor *v1.Pod, scheduleErr error) (string, e
 	// but preemption logic does not find any node for it. In that case Preempt()
 	// function of generic_scheduler.go returns the pod itself for removal of the annotation.
 	for _, p := range nominatedPodsToClear {
+		// 删除 nominated pod的nominatedName, 会触发事件吗?
 		rErr := sched.config.PodPreemptor.RemoveNominatedNodeName(p)
 		if rErr != nil {
 			klog.Errorf("Cannot remove nominated node annotation of pod: %v", rErr)
@@ -414,6 +423,7 @@ func (sched *Scheduler) assume(assumed *v1.Pod, host string) error {
 	// in the background.
 	// If the binding fails, scheduler will release resources allocated to assumed pod
 	// immediately.
+	// assumed 是一份pod对象的copy
 	assumed.Spec.NodeName = host
 
 	if err := sched.config.SchedulerCache.AssumePod(assumed); err != nil {
@@ -430,7 +440,8 @@ func (sched *Scheduler) assume(assumed *v1.Pod, host string) error {
 	}
 
 	// if "assumed" is a nominated pod, we should remove it from internal cache
-	// 这里也没有看懂?
+    // NOTE: 这里可能assumed的是一个preempt的node, 因为这里基本已经确定可以绑定成功
+	// 所以删除 nominated列表中的值
 	if sched.config.SchedulingQueue != nil {
 		sched.config.SchedulingQueue.DeleteNominatedPodIfExists(assumed)
 	}
@@ -517,7 +528,8 @@ func (sched *Scheduler) scheduleOne() {
 			} else {
                 // 使用 preempt调度pod到Node, 具体是干嘛? 不懂
 				preemptionStartTime := time.Now()
-				sched.preempt(pod, fitError)            // 开始preempt
+				// 如果preempt依旧失败?
+				sched.preempt(pod, fitError)            // 开始preempt, fitError包含失败原因
 				metrics.PreemptionAttempts.Inc()
 				metrics.SchedulingAlgorithmPremptionEvaluationDuration.Observe(metrics.SinceInMicroseconds(preemptionStartTime))
 				metrics.SchedulingLatency.WithLabelValues(metrics.PreemptionEvaluation).Observe(metrics.SinceInSeconds(preemptionStartTime))
@@ -620,6 +632,7 @@ func (sched *Scheduler) scheduleOne() {
 		}
 
 		// 将pod bind到host中
+        // 绑定失败: 会怎样? 发出podInformer通知吗? 重新参与调度
 		err := sched.bind(assumedPod, &v1.Binding{
 			ObjectMeta: metav1.ObjectMeta{Namespace: assumedPod.Namespace, Name: assumedPod.Name, UID: assumedPod.UID},
 

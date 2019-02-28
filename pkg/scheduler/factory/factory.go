@@ -287,6 +287,7 @@ func NewConfigFactory(args *ConfigFactoryArgs) Configurator {
 
 	c.scheduledPodsHasSynced = args.PodInformer.Informer().HasSynced
 	// scheduled pod cache
+	// 有名字"spec.NodeName"的pod, 已经绑定成功. 激发其它操作
 	args.PodInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -313,6 +314,7 @@ func NewConfigFactory(args *ConfigFactoryArgs) Configurator {
 		},
 	)
 	// unscheduled pod queue
+	// 没有名字"spec.NodeName"的pod, 准备加入调度队列
 	args.PodInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {

@@ -205,7 +205,7 @@ type PriorityQueue struct {
 
 	// activeQ is heap structure that scheduler actively looks at to find pods to
 	// schedule. Head of heap is the highest priority pod.
-	activeQ *util.Heap              // 正在调度的, 啥时候删除
+	activeQ *util.Heap              // 正在调度的, nextPod()时删除
 	// podBackoffQ is a heap ordered by backoff expiry. Pods which have completed backoff
 	// are popped from this heap before the scheduler looks at activeQ
 	podBackoffQ *util.Heap
@@ -283,7 +283,12 @@ func (p *PriorityQueue) run() {
 
 // Add adds a pod to the active queue. It should be called only when a new pod
 // is added so there is no chance the pod is already in active/unschedulable/backoff queues
+// 将unscheduling 中的pod移动到nominated中
 func (p *PriorityQueue) Add(pod *v1.Pod) error {
+	// 由pod informer的handler 事件处理器调用
+	// 如果有pod添加: 同时放入ActiveQ和unschedulableQ中
+	// 后期如果node有更新, pod有删除, 会激发unschedulableQ中重新放入ActiveQ中
+	// unscheduableQ中什么时候删除(如果绑定成功, 在哪里删除)
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if err := p.activeQ.Add(pod); err != nil {
@@ -553,6 +558,7 @@ func (p *PriorityQueue) Delete(pod *v1.Pod) error {
 // AssignedPodAdded is called when a bound pod is added. Creation of this pod
 // may make pending pods with matching affinity terms schedulable.
 func (p *PriorityQueue) AssignedPodAdded(pod *v1.Pod) {
+	// 某个pod绑定成功了, 判断一下会不会激发其它绑定失败的pod也绑定成功
 	p.lock.Lock()
 	p.movePodsToActiveQueue(p.getUnschedulablePodsWithMatchingAffinityTerm(pod))
 	p.lock.Unlock()
@@ -592,6 +598,8 @@ func (p *PriorityQueue) MoveAllToActiveQueue() {
 // NOTE: this function assumes lock has been acquired in caller
 func (p *PriorityQueue) movePodsToActiveQueue(pods []*v1.Pod) {
 	for _, pod := range pods {
+		// 从unschedulableQ中移动到activeQ, 或者backoffQ
+        // TODO: backoffQ 用途?, unschedulableQ什么时候会添加pod?
 		if p.isPodBackingOff(pod) {
 			if err := p.podBackoffQ.Add(pod); err != nil {
 				klog.Errorf("Error adding pod %v to the backoff queue: %v", pod.Name, err)
@@ -780,9 +788,15 @@ func (npm *nominatedPodMap) delete(p *v1.Pod) {
 	if !ok {
 		return
 	}
+
+	// 找到nnn中的pod, 将其删除
 	for i, np := range npm.nominatedPods[nnn] {
 		if np.UID == p.UID {
+
+            // 通过slice, 只选取[0:i] + [i+1:]
 			npm.nominatedPods[nnn] = append(npm.nominatedPods[nnn][:i], npm.nominatedPods[nnn][i+1:]...)
+
+			// 如果node已经没有nominated pod了, 删除map中的node item
 			if len(npm.nominatedPods[nnn]) == 0 {
 				delete(npm.nominatedPods, nnn)
 			}
