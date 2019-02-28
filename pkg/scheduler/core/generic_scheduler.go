@@ -309,6 +309,8 @@ func (g *genericScheduler) Preempt(pod *v1.Pod, nodeLister algorithm.NodeLister,
 	if len(allNodes) == 0 {
 		return nil, nil, nil, ErrNoNodesAvailable
 	}
+
+	// fieError是predicates失败时, 记录下来的(记录了失败的node, 和失败的原因)
 	potentialNodes := nodesWherePreemptionMightHelp(allNodes, fitError.FailedPredicates)
 	if len(potentialNodes) == 0 {
 		klog.V(3).Infof("Preemption will not help schedule pod %v/%v on any node.", pod.Namespace, pod.Name)
@@ -420,21 +422,19 @@ func (g *genericScheduler) numFeasibleNodesToFind(numAllNodes int32) (numNodes i
 		return numAllNodes
 	}
 
+	// 这个数字表示选择多少比例的node, 参与评分(选择一定比例的node参与评分)
+	// node总数越多, 比例越小, 当node总数numAllNodes大于 50 * 125时, 一律选取5%个数的node
+	// 选取比例在[5%, 50%]之间
 	adaptivePercentage := g.percentageOfNodesToScore
+
 	if adaptivePercentage <= 0 {
-        // 假如有 5个node: adaptivePercentage = 50 - 5 / 125 == 49.96
+        // 假如有 5个node: adaptivePercentage = 50 - numAllNodes / 125 == 49.96
 		adaptivePercentage = schedulerapi.DefaultPercentageOfNodesToScore - numAllNodes/125
 		if adaptivePercentage < minFeasibleNodesPercentageToFind {
 			adaptivePercentage = minFeasibleNodesPercentageToFind
 		}
 	}
 
-    // 假如有 5个node: adaptivePercentage = 50 - 5 / 125 == 49.96
-	// numNodes = 5 * 49.96 / 100 == 2.498, 远小于 minFeasibleNodesToFind
-	// 所以返回 minFeasibleNodesToFind == 100
-	// 最少也要处理100个节点, 如果节点数小于100, 全部处理
-	// 但如果节点数有500个: 返回 n * (50 - n / 125) / 100 == (n/2 - 4/5 *(n^2)), 大约predicate需要 1/2 * n个节点
-	// 但这个算法从何而来?
 	numNodes = numAllNodes * adaptivePercentage / 100
 	if numNodes < minFeasibleNodesToFind {
 		return minFeasibleNodesToFind
@@ -483,7 +483,7 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 				meta,
 				g.cachedNodeInfoMap[nodeName],      // 读取node info by name
 				g.predicates,                       // predicates函数句柄
-				g.schedulingQueue,
+				g.schedulingQueue,                  // g.SchedulingQueue是一个nominated(pod, node)的优先级队列?
 				g.alwaysCheckAllPredicates,
 			)
 
@@ -518,7 +518,8 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 
 		filtered = filtered[:filteredLen]
 
-        // 发生错误
+		// 发生错误返回
+        // NOTE: 没有错误继续, 注意 failed predicate不算error
 		if len(errs) > 0 {
 			return []*v1.Node{}, FailedPredicateMap{}, errors.CreateAggregateFromMessageCountMap(errs)
 		}
@@ -569,6 +570,8 @@ func addNominatedPods(pod *v1.Pod, meta predicates.PredicateMetadata,
 		// This may happen only in tests.
 		return false, meta, nodeInfo
 	}
+
+	// 这个queue应该是一个nominatedPods queue, 一个优先级队列
 	nominatedPods := queue.NominatedPodsForNode(nodeInfo.Node().Name)
 	if nominatedPods == nil || len(nominatedPods) == 0 {
 		return false, meta, nodeInfo
@@ -580,7 +583,7 @@ func addNominatedPods(pod *v1.Pod, meta predicates.PredicateMetadata,
 	nodeInfoOut := nodeInfo.Clone()
 	for _, p := range nominatedPods {
 		if util.GetPodPriority(p) >= util.GetPodPriority(pod) && p.UID != pod.UID {
-			nodeInfoOut.AddPod(p)
+			nodeInfoOut.AddPod(p)       // 添加优先级高于当前pod的其它所有pod
 			if metaOut != nil {
 				metaOut.AddPod(p, nodeInfoOut)
 			}
@@ -628,12 +631,15 @@ func podFitsOnNode(
 	// the nominated pods are treated as not running. We can't just assume the
 	// nominated pods are running because they are not running right now and in fact,
 	// they may end up getting scheduled to a different node.
+
+    // TODO : 这里为什么通过"i"变量循环两次?
 	for i := 0; i < 2; i++ {
 		metaToUse := meta
 		nodeInfoToUse := info
 		if i == 0 {
 			podsAdded, metaToUse, nodeInfoToUse = addNominatedPods(pod, meta, info, queue)
 		} else if !podsAdded || len(failedPredicates) != 0 {
+			// 如果pod 没有添加到node的nominated, 并且通过了所有predicate, 为什么要再次检查
 			break
 		}
 		for _, predicateKey := range predicates.Ordering() {
@@ -1137,6 +1143,7 @@ func nodesWherePreemptionMightHelp(nodes []*v1.Node, failedPredicatesMap FailedP
 		for _, failedPredicate := range failedPredicates {
 			switch failedPredicate {
 			case
+				// 以下原因的发生, 都导致不能preempt. 其它原因可以preempt
 				predicates.ErrNodeSelectorNotMatch,
 				predicates.ErrPodAffinityRulesNotMatch,
 				predicates.ErrPodNotMatchHostName,
@@ -1155,6 +1162,7 @@ func nodesWherePreemptionMightHelp(nodes []*v1.Node, failedPredicatesMap FailedP
 				predicates.ErrVolumeZoneConflict,
 				predicates.ErrVolumeNodeConflict,
 				predicates.ErrVolumeBindConflict:
+
 				unresolvableReasonExist = true
 				break
 			}
@@ -1164,6 +1172,8 @@ func nodesWherePreemptionMightHelp(nodes []*v1.Node, failedPredicatesMap FailedP
 			potentialNodes = append(potentialNodes, node)
 		}
 	}
+
+	// 所有可以
 	return potentialNodes
 }
 
@@ -1173,6 +1183,7 @@ func nodesWherePreemptionMightHelp(nodes []*v1.Node, failedPredicatesMap FailedP
 // considered for preemption.
 // We look at the node that is nominated for this pod and as long as there are
 // terminating pods on the node, we don't consider this for preempting more pods.
+// 判断这个pod是否适合preempt
 func podEligibleToPreemptOthers(pod *v1.Pod, nodeNameToInfo map[string]*schedulernodeinfo.NodeInfo) bool {
 	nomNodeName := pod.Status.NominatedNodeName
 	if len(nomNodeName) > 0 {

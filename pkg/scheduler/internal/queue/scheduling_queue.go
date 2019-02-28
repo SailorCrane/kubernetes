@@ -205,7 +205,7 @@ type PriorityQueue struct {
 
 	// activeQ is heap structure that scheduler actively looks at to find pods to
 	// schedule. Head of heap is the highest priority pod.
-	activeQ *util.Heap
+	activeQ *util.Heap              // 正在调度的, 啥时候删除
 	// podBackoffQ is a heap ordered by backoff expiry. Pods which have completed backoff
 	// are popped from this heap before the scheduler looks at activeQ
 	podBackoffQ *util.Heap
@@ -447,6 +447,7 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 // activeQ is empty and waits until a new item is added to the queue. It also
 // clears receivedMoveRequest to mark the beginning of a new scheduling cycle.
 func (p *PriorityQueue) Pop() (*v1.Pod, error) {
+	// Pop()把ActiveQ中的pod返回, 这里是pod informer加入的没有名字, 待调度的pod
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	for p.activeQ.Len() == 0 {

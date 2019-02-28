@@ -292,6 +292,7 @@ func NewConfigFactory(args *ConfigFactoryArgs) Configurator {
 			FilterFunc: func(obj interface{}) bool {
 				switch t := obj.(type) {
 				case *v1.Pod:
+					// 过滤pod, 选择是否用handler处理, 这里根据pod assignedName判断是否是新pod
 					return assignedPod(t)
 				case cache.DeletedFinalStateUnknown:
 					if pod, ok := t.Obj.(*v1.Pod); ok {
@@ -916,7 +917,7 @@ func (c *configFactory) CreateFromKeys(predicateKeys, priorityKeys sets.String, 
 		Error:           c.MakeDefaultErrorFunc(podBackoff, c.podQueue),
 		StopEverything:  c.StopEverything,
 		VolumeBinder:    c.volumeBinder,
-		SchedulingQueue: c.podQueue,
+		SchedulingQueue: c.podQueue,                    // 这里的SchedulingQueue是factor.podQueue
 	}, nil
 }
 
