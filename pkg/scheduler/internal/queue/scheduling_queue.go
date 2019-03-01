@@ -577,6 +577,7 @@ func (p *PriorityQueue) AssignedPodUpdated(pod *v1.Pod) {
 // if Pop() is waiting for an item, it receives it after all the pods are in the
 // queue and the head is the highest priority pod.
 func (p *PriorityQueue) MoveAllToActiveQueue() {
+	// 添加新节点: 导致重新调度所有pod
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	for _, pod := range p.unschedulableQ.pods {

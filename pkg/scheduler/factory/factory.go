@@ -287,7 +287,7 @@ func NewConfigFactory(args *ConfigFactoryArgs) Configurator {
 
 	c.scheduledPodsHasSynced = args.PodInformer.Informer().HasSynced
 	// scheduled pod cache
-	// 有名字"spec.NodeName"的pod, 已经绑定成功. 激发其它操作
+	// 有名字"spec.NodeName"的pod, 表示对"binded pod"的操作
 	args.PodInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -313,8 +313,10 @@ func NewConfigFactory(args *ConfigFactoryArgs) Configurator {
 			},
 		},
 	)
+
 	// unscheduled pod queue
 	// 没有名字"spec.NodeName"的pod, 准备加入调度队列
+	// 待调度的pod
 	args.PodInformer.Informer().AddEventHandler(
 		cache.FilteringResourceEventHandler{
 			FilterFunc: func(obj interface{}) bool {
@@ -561,6 +563,8 @@ func (c *configFactory) updatePodInCache(oldObj, newObj interface{}) {
 		klog.Errorf("scheduler cache UpdatePod failed: %v", err)
 	}
 
+	// pod update的可能是selector, 导致unschedulableQ中的pod亲和性改变, 从而调度成功
+	// pod update的可能是资源需求改变, image改变等等, 导致unschedulableQ中的pod亲和性改变, 从而调度成功
 	c.podQueue.AssignedPodUpdated(newPod)
 }
 
@@ -626,6 +630,7 @@ func (c *configFactory) deletePodFromCache(obj interface{}) {
 		klog.Errorf("scheduler cache RemovePod failed: %v", err)
 	}
 
+	// 删除pod导致重新调度所有unschedulable pod
 	c.podQueue.MoveAllToActiveQueue()
 }
 
@@ -640,6 +645,7 @@ func (c *configFactory) addNodeToCache(obj interface{}) {
 		klog.Errorf("scheduler cache AddNode failed: %v", err)
 	}
 
+    // 添加node: 导致重新调度所有unschedulable pod
 	c.podQueue.MoveAllToActiveQueue()
 }
 
@@ -1087,6 +1093,7 @@ func NewPodInformer(client clientset.Interface, resyncPeriod time.Duration) core
 }
 
 func (c *configFactory) MakeDefaultErrorFunc(backoff *util.PodBackoff, podQueue internalqueue.SchedulingQueue) func(pod *v1.Pod, err error) {
+	// sched 调度失败时, 使用这个函数
 	return func(pod *v1.Pod, err error) {
 		if err == core.ErrNoNodesAvailable {
 			klog.V(4).Infof("Unable to schedule %v/%v: no nodes are registered to the cluster; waiting", pod.Namespace, pod.Name)
@@ -1136,6 +1143,7 @@ func (c *configFactory) MakeDefaultErrorFunc(backoff *util.PodBackoff, podQueue 
 				pod, err := c.client.CoreV1().Pods(podID.Namespace).Get(podID.Name, metav1.GetOptions{})
 				if err == nil {
 					if len(pod.Spec.NodeName) == 0 {
+						// 将podQueue加入unscheduableQ中
 						podQueue.AddUnschedulableIfNotPresent(pod)
 					} else {
 						if c.volumeBinder != nil {

@@ -287,7 +287,8 @@ func (sched *Scheduler) Config() *factory.Config {
 // NOTE: This function modifies "pod". "pod" should be copied before being passed.
 // 在predicate失败, assume失败, bind失败, 都会调用这里更新pod状态, 告知失败原因
 func (sched *Scheduler) recordSchedulingFailure(pod *v1.Pod, err error, reason string, message string) {
-	sched.config.Error(pod, err)
+	// Error是一个func, 会把pod加入unscheduableQ中
+	sched.config.Error(pod, err)  // 将podQueue加入unscheduableQ中
 	sched.config.Recorder.Event(pod, v1.EventTypeWarning, "FailedScheduling", message)
 
     // 更新pod condition: 会触发pod事件

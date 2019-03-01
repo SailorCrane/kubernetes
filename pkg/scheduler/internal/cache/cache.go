@@ -194,7 +194,7 @@ func (cache *schedulerCache) AssumePod(pod *v1.Pod) error {
 		pod: pod,
 	}
 	cache.podStates[key] = ps
-	cache.assumedPods[key] = true
+	cache.assumedPods[key] = true       // 并且添加到assume中
 	return nil
 }
 
@@ -254,6 +254,7 @@ func (cache *schedulerCache) ForgetPod(pod *v1.Pod) error {
 // Assumes that lock is already acquired.
 func (cache *schedulerCache) addPod(pod *v1.Pod) {
 	// 把pod添加到node cache中
+	// 如果nodes map没有这个node(第一次创建), 新建一个
 	n, ok := cache.nodes[pod.Spec.NodeName]
 	if !ok {
 		n = schedulernodeinfo.NewNodeInfo()
@@ -303,6 +304,7 @@ func (cache *schedulerCache) AddPod(pod *v1.Pod) error {
 			cache.addPod(pod)
 		}
 		delete(cache.assumedPods, key)
+        // 如果已经在assume中, 不用再添加node, 只需要清楚assume标志
 		cache.podStates[key].deadline = nil
 		cache.podStates[key].pod = pod
 	case !ok:
