@@ -206,9 +206,11 @@ type PriorityQueue struct {
 	// activeQ is heap structure that scheduler actively looks at to find pods to
 	// schedule. Head of heap is the highest priority pod.
 	activeQ *util.Heap              // 正在调度的, nextPod()时删除
+
 	// podBackoffQ is a heap ordered by backoff expiry. Pods which have completed backoff
 	// are popped from this heap before the scheduler looks at activeQ
-	podBackoffQ *util.Heap
+	podBackoffQ *util.Heap      // 定时冷宫?
+
 	// unschedulableQ holds pods that have been tried and determined unschedulable.
 	unschedulableQ *UnschedulablePodsMap
 	// nominatedPods is a structures that stores pods which are nominated to run
@@ -263,6 +265,8 @@ func NewPriorityQueueWithClock(stop <-chan struct{}, clock util.Clock) *Priority
 	pq := &PriorityQueue{
 		clock:          clock,
 		stop:           stop,
+
+		// 最大冷却10秒
 		podBackoff:     util.CreatePodBackoffWithClock(1*time.Second, 10*time.Second, clock),
 		// 传入 activeQComp是比较优先级的函数句柄
 		activeQ:        util.NewHeap(cache.MetaNamespaceKeyFunc, activeQComp),      // 传入
@@ -279,6 +283,7 @@ func NewPriorityQueueWithClock(stop <-chan struct{}, clock util.Clock) *Priority
 
 // run starts the goroutine to pump from podBackoffQ to activeQ
 func (p *PriorityQueue) run() {
+	// queue创建后, 执行这个协程
 	go wait.Until(p.flushBackoffQCompleted, 1.0*time.Second, p.stop)
 }
 
@@ -287,9 +292,10 @@ func (p *PriorityQueue) run() {
 // 将unscheduling 中的pod移动到nominated中
 func (p *PriorityQueue) Add(pod *v1.Pod) error {
 	// 由pod informer的handler 事件处理器调用
-	// 如果有pod添加: 同时放入ActiveQ和unschedulableQ中
+	// 如果有pod添加: 放入ActiveQ中, 同时从unschedulableQ中删除.
 	// 后期如果node有更新, pod有删除, 会激发unschedulableQ中重新放入ActiveQ中
-	// unscheduableQ中什么时候删除(如果绑定成功, 在哪里删除)
+    // 注意: pod在ActiveQ和unscheduableQ中只能二选一
+    // 调度失败时, 加入unscheduableQ. 事件触发时, 从unschedulableQ移动到ActiveQ
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	if err := p.activeQ.Add(pod); err != nil {
@@ -300,12 +306,16 @@ func (p *PriorityQueue) Add(pod *v1.Pod) error {
 		klog.Errorf("Error: pod %v/%v is already in the unschedulable queue.", pod.Namespace, pod.Name)
 		p.unschedulableQ.delete(pod)
 	}
-	// Delete pod from backoffQ if it is backing off
+
+
+	// podBackoffQ到底是干嘛的, 再读读代码
+	// Delete pod from podBackoffQ if it is backing off
 	if err := p.podBackoffQ.Delete(pod); err == nil {
 		klog.Errorf("Error: pod %v/%v is already in the podBackoff queue.", pod.Namespace, pod.Name)
 	}
 	p.nominatedPods.add(pod, "")
-	p.cond.Broadcast()
+
+	p.cond.Broadcast()      // pod cond Broadcast, 会发生什么?
 
 	return nil
 }
@@ -390,7 +400,12 @@ func (p *PriorityQueue) AddUnschedulableIfNotPresent(pod *v1.Pod) error {
 	if _, exists, _ := p.podBackoffQ.Get(pod); exists {
 		return fmt.Errorf("pod is already present in the backoffQ")
 	}
+
+    // 如果没有收到move请求, 表示没有资源加入: 放入unschedulableQ
 	if !p.receivedMoveRequest && isPodUnschedulable(pod) {
+		// backoffPod 表示已经失败过两次了
+        // NOTE: 不放入activeQ中的原因是, 怕它一加入acitveQ头就失败, 导致循环加入activeQ的头中
+        // NOTE: 这样后面的activeQ中其它pod无法再被调度(一直重复头pod的失败)
 		p.backoffPod(pod)
 		p.unschedulableQ.addOrUpdate(pod)
 		p.nominatedPods.add(pod, "")
@@ -398,6 +413,8 @@ func (p *PriorityQueue) AddUnschedulableIfNotPresent(pod *v1.Pod) error {
 	}
 
 	// If a move request has been received and the pod is subject to backoff, move it to the BackoffQ.
+    // 将已经失败过两次的pod,放入backoffQ中冷冻一段时间.
+    // 免得一致失败
 	if p.isPodBackingOff(pod) && isPodUnschedulable(pod) {
 		err := p.podBackoffQ.Add(pod)
 		if err != nil {
@@ -408,6 +425,7 @@ func (p *PriorityQueue) AddUnschedulableIfNotPresent(pod *v1.Pod) error {
 		return err
 	}
 
+    // 并且收到了receive, 将已经失败过一次的pod, 放到activeQ中尝试一下
 	err := p.activeQ.Add(pod)
 	if err == nil {
 		p.nominatedPods.add(pod, "")
@@ -417,6 +435,7 @@ func (p *PriorityQueue) AddUnschedulableIfNotPresent(pod *v1.Pod) error {
 }
 
 // flushBackoffQCompleted Moves all pods from backoffQ which have completed backoff in to activeQ
+// activeQ创建后, 就开始循环执行的函数
 func (p *PriorityQueue) flushBackoffQCompleted() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -436,6 +455,7 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 			continue
 		}
 
+		// 如果超过当前时间, 放入activeQ
 		if boTime.After(p.clock.Now()) {
 			return
 		}
