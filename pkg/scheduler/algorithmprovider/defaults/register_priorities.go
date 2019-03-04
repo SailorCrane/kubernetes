@@ -66,6 +66,7 @@ func init() {
 	)
 	// pods should be placed in the same topological domain (e.g. same node, same rack, same zone, same power domain, etc.)
 	// as some other pods, or, conversely, should not be placed in the same topological domain as some other pods.
+    // NOTE: 计算inter-pod affinity 亲和度分数
 	factory.RegisterPriorityConfigFactory(
 		priorities.InterPodAffinityPriority,
 		factory.PriorityConfigFactory{

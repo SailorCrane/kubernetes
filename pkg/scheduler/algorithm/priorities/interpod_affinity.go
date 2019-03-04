@@ -143,13 +143,18 @@ func (ipa *InterPodAffinity) CalculateInterPodAffinityPriority(pod *v1.Pod, node
 			return err
 		}
 		existingPodAffinity := existingPod.Spec.Affinity
+
+		// 正向亲和度
 		existingHasAffinityConstraints := existingPodAffinity != nil && existingPodAffinity.PodAffinity != nil
+
+		// 反向亲和度
 		existingHasAntiAffinityConstraints := existingPodAffinity != nil && existingPodAffinity.PodAntiAffinity != nil
 
 		if hasAffinityConstraints {
 			// For every soft pod affinity term of <pod>, if <existingPod> matches the term,
 			// increment <pm.counts> for every node in the cluster with the same <term.TopologyKey>
 			// value as that of <existingPods>`s node by the term`s weight.
+			// 这里的terms应该是pod中需要匹配的项(affinity)
 			terms := affinity.PodAffinity.PreferredDuringSchedulingIgnoredDuringExecution
 			pm.processTerms(terms, pod, existingPod, existingPodNode, 1)
 		}
@@ -196,6 +201,7 @@ func (ipa *InterPodAffinity) CalculateInterPodAffinityPriority(pod *v1.Pod, node
 			if hasAffinityConstraints || hasAntiAffinityConstraints {
 				// We need to process all the nodes.
 				for _, existingPod := range nodeInfo.Pods() {
+					// 对node中的所有pod做precessPod处理
 					if err := processPod(existingPod); err != nil {
 						pm.setError(err)
 					}
@@ -229,6 +235,9 @@ func (ipa *InterPodAffinity) CalculateInterPodAffinityPriority(pod *v1.Pod, node
 	result := make(schedulerapi.HostPriorityList, 0, len(nodes))
 	for _, node := range nodes {
 		fScore := float64(0)
+
+		// 否则应该是大家得分相同(maxCount == minCount)
+		// pm.counts[node.Name]越大, 得分越高
 		if (maxCount - minCount) > 0 {
 			fScore = float64(schedulerapi.MaxPriority) * ((pm.counts[node.Name] - minCount) / (maxCount - minCount))
 		}
