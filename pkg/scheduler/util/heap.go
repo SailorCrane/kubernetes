@@ -140,6 +140,7 @@ func (h *Heap) Add(obj interface{}) error {
 		h.data.items[key].obj = obj
 		heap.Fix(h.data, h.data.items[key].index)
 	} else {
+		// 借助container/heap库, 实现了优先级队列
 		heap.Push(h.data, &itemKeyValue{key, obj})
 	}
 	return nil

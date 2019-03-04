@@ -184,7 +184,7 @@ func (g *genericScheduler) Schedule(pod *v1.Pod, nodeLister algorithm.NodeLister
 	trace.Step("Computing predicates")
 	startPredicateEvalTime := time.Now()
 
-	// predicate 过程结束, 过滤出的node放入filteredNodes中
+    // NOTE: predicate 过程, 过滤出的node放入filteredNodes中
 	filteredNodes, failedPredicateMap, err := g.findNodesThatFit(pod, nodes)
 	if err != nil {
 		return result, err
@@ -351,10 +351,10 @@ func (g *genericScheduler) Preempt(pod *v1.Pod, nodeLister algorithm.NodeLister,
 	}
 
 	// Lower priority pods nominated to run on this node, may no longer fit on
-	// this node. So, we should remove their nomination. Removing their
-	// nomination updates these pods and moves them to the active queue. It
-	// lets scheduler find another place for them.
-	// 获取 g.schedulingQueue中的nominatedPods
+	// this node. So, we should remove their nomination.
+	// Removing their nomination updates these pods and
+	// moves them to the active queue. It lets scheduler find another place for them.
+	// 获取 g.schedulingQueue中的nominatedPods中优先级比当前有限级低的
 	nominatedPods := g.getLowerPriorityNominatedPods(pod, candidateNode.Name)
 	if nodeInfo, ok := g.cachedNodeInfoMap[candidateNode.Name]; ok {
 		// TODO: 返回这些值咋么用?
@@ -469,7 +469,7 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 		filtered = nodes
 	} else {
 		allNodes := int32(g.cache.NodeTree().NumNodes())
-		numNodesToFind := g.numFeasibleNodesToFind(allNodes)        // feasible node具体定义是什么,进去瞅瞅
+		numNodesToFind := g.numFeasibleNodesToFind(allNodes)        // feasible node查找一定数量的合适的node即可
 
 		// Create filtered list with enough space to avoid growing it
 		// and allow assigning.
@@ -724,11 +724,11 @@ func PrioritizeNodes(
 ) (schedulerapi.HostPriorityList, error) {
 	// If no priority configs are provided, then the EqualPriority function is applied
 	// This is required to generate the priority list in the required format
-    // 英文注释很清晰
+	// 英文注释很清晰
 	if len(priorityConfigs) == 0 && len(extenders) == 0 {
 		result := make(schedulerapi.HostPriorityList, 0, len(nodes))
 		for i := range nodes {
-            // 猜测: equalPriority 每个node得分都相同(然后随机选择?还是轮流选择?)
+			// 猜测: equalPriority 每个node得分都相同(然后随机选择?还是轮流选择?)
 			hostPriority, err := EqualPriorityMap(pod, meta, nodeNameToInfo[nodes[i].Name])
 			if err != nil {
 				return nil, err

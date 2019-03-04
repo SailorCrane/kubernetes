@@ -345,6 +345,7 @@ func (sched *Scheduler) preempt(preemptor *v1.Pod, scheduleErr error) (string, e
 		// Make a call to update nominated node name of the pod on the API server.
 
 		// 设置 nominated名字, 会导致podLister事件被触发吗?
+		// 应该会, 这样即使在没有victims要被剔除的情况下, preemptor也可以加入调度队列!
 		err = sched.config.PodPreemptor.SetNominatedNodeName(preemptor, nodeName)
 		if err != nil {
 			klog.Errorf("Error in preemption process. Cannot update pod %v/%v annotations: %v", preemptor.Namespace, preemptor.Name, err)
@@ -354,6 +355,8 @@ func (sched *Scheduler) preempt(preemptor *v1.Pod, scheduleErr error) (string, e
 
 		for _, victim := range victims {
 			// 销毁低priority的node
+			// 但并不删除它们所占用的nominatedPod queue中的资源
+			// 导致它们重新添加到ActiveQ中, 然后直接调度成功, 或者再为自己找一个位置
 			if err := sched.config.PodPreemptor.DeletePod(victim); err != nil {
 				klog.Errorf("Error preempting pod %v/%v: %v", victim.Namespace, victim.Name, err)
 				return "", err
@@ -442,7 +445,7 @@ func (sched *Scheduler) assume(assumed *v1.Pod, host string) error {
 
 	// if "assumed" is a nominated pod, we should remove it from internal cache
     // NOTE: 这里可能assumed的是一个preempt的node, 因为这里基本已经确定可以绑定成功
-	// 所以删除 nominated列表中的值
+	// 所以删除 nominated列表中的值, 表示不再抢占这个资源!
 	if sched.config.SchedulingQueue != nil {
 		sched.config.SchedulingQueue.DeleteNominatedPodIfExists(assumed)
 	}

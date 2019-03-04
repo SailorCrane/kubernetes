@@ -264,7 +264,8 @@ func NewPriorityQueueWithClock(stop <-chan struct{}, clock util.Clock) *Priority
 		clock:          clock,
 		stop:           stop,
 		podBackoff:     util.CreatePodBackoffWithClock(1*time.Second, 10*time.Second, clock),
-		activeQ:        util.NewHeap(cache.MetaNamespaceKeyFunc, activeQComp),
+		// 传入 activeQComp是比较优先级的函数句柄
+		activeQ:        util.NewHeap(cache.MetaNamespaceKeyFunc, activeQComp),      // 传入
 		unschedulableQ: newUnschedulablePodsMap(),
 		nominatedPods:  newNominatedPodMap(),
 	}
@@ -765,6 +766,9 @@ type nominatedPodMap struct {
 func (npm *nominatedPodMap) add(p *v1.Pod, nodeName string) {
 	// always delete the pod if it already exist, to ensure we never store more than
 	// one instance of the pod.
+	// 不用怕重复, 添加时, 会先删除原来的. 保证nominatedPod只和一个node挂钩
+
+    // NOTE: 先删除
 	npm.delete(p)
 
 	nnn := nodeName
@@ -785,6 +789,8 @@ func (npm *nominatedPodMap) add(p *v1.Pod, nodeName string) {
 }
 
 func (npm *nominatedPodMap) delete(p *v1.Pod) {
+	// 添加npm时, 会先调用一次, 保证不重复
+	// pod绑定成功时, 也会删除
 	nnn, ok := npm.nominatedPodToNode[p.UID]
 	if !ok {
 		return
