@@ -168,6 +168,7 @@ func (p *PodBackoff) Gc() {
 	defer p.lock.Unlock()
 	now := p.clock.Now()
 	var be *backoffEntry
+	// 回收已经过期的entry(可能已经绑定到pod中了, 所以这里过段时间就过期了)
 	for {
 		entry := p.expiryQ.Peek()
 		if entry == nil {
@@ -191,6 +192,9 @@ func (p *PodBackoff) GetBackoffTime(podID ktypes.NamespacedName) (time.Time, boo
 		return time.Time{}, false
 	}
 	be := rawBe.(*backoffEntry)
+
+	// NOTE: 这里用lastUpdate + backoff(退避时间)
+	// TODO: 这里返回时, 会加上be.backoff, 可是在expireQ中排序时, 却没有加上backoff
 	return be.lastUpdate.Add(be.backoff), true
 }
 

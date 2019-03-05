@@ -374,6 +374,10 @@ func (p *PriorityQueue) isPodBackingOff(pod *v1.Pod) bool {
 // backoffPod checks if pod is currently undergoing backoff. If it is not it updates the backoff
 // timeout otherwise it does nothing.
 func (p *PriorityQueue) backoffPod(pod *v1.Pod) {
+	// NOTE: Gc在这里是干嘛的?
+	// NOTE: Gc回收过期的pod entry(pod的backoff标记)
+	// NOTE: podBackoff 清除在Gc()
+	// NOTE: podBackoffQ 的清除在 flushBackoffQCompleted()中
 	p.podBackoff.Gc()
 
 	podID := nsNameForPod(pod)
@@ -403,10 +407,10 @@ func (p *PriorityQueue) AddUnschedulableIfNotPresent(pod *v1.Pod) error {
 
     // 如果没有收到move请求, 表示没有资源加入: 放入unschedulableQ
 	if !p.receivedMoveRequest && isPodUnschedulable(pod) {
-		// backoffPod 表示已经失败过两次了
+		// backoffPod 表示已经失败过>= 2次了
         // NOTE: 不放入activeQ中的原因是, 怕它一加入acitveQ头就失败, 导致循环加入activeQ的头中
         // NOTE: 这样后面的activeQ中其它pod无法再被调度(一直重复头pod的失败)
-		p.backoffPod(pod)
+        p.backoffPod(pod)                       // NOTE: 标记pod属性为backoff
 		p.unschedulableQ.addOrUpdate(pod)
 		p.nominatedPods.add(pod, "")
 		return nil
@@ -437,10 +441,14 @@ func (p *PriorityQueue) AddUnschedulableIfNotPresent(pod *v1.Pod) error {
 // flushBackoffQCompleted Moves all pods from backoffQ which have completed backoff in to activeQ
 // activeQ创建后, 就开始循环执行的函数
 func (p *PriorityQueue) flushBackoffQCompleted() {
+	// 一秒钟执行一次
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
+	// 如果头元素没有过期, 退出函数. 等待一秒钟
+	// 将头几个同时过期的元素, 都加入到ActiveQ中
 	for {
+		// 这里是podBAckoffQ: 这个优先级队列的排序标注是lastUpdate + backoff
 		rawPod := p.podBackoffQ.Peek()
 		if rawPod == nil {
 			return
@@ -455,7 +463,8 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 			continue
 		}
 
-		// 如果超过当前时间, 放入activeQ
+		// 如果Peek() 还没有过期(boTime > Now()) : 先不管
+		// 因为Peek()是最快要过期的时间, 也没有过期, 退出函数.1秒钟后重试
 		if boTime.After(p.clock.Now()) {
 			return
 		}
@@ -464,6 +473,7 @@ func (p *PriorityQueue) flushBackoffQCompleted() {
 			klog.Errorf("Unable to pop pod %v from backoffQ despite backoff completion.", nsNameForPod(pod))
 			return
 		}
+		// 如果Peek()过期(boTime < Now() ) : 放入ActiveQ. 并检查下一个Peek()元素
 		p.activeQ.Add(pod)
 		defer p.cond.Broadcast()
 	}
@@ -602,6 +612,7 @@ func (p *PriorityQueue) MoveAllToActiveQueue() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	for _, pod := range p.unschedulableQ.pods {
+        // TODO: 为什么会出现在unshcedulableQ中的节点, 属性却是backOff
 		if p.isPodBackingOff(pod) {
 			if err := p.podBackoffQ.Add(pod); err != nil {
 				klog.Errorf("Error adding pod %v to the backoff queue: %v", pod.Name, err)
