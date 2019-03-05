@@ -300,11 +300,16 @@ func (g *genericScheduler) Preempt(pod *v1.Pod, nodeLister algorithm.NodeLister,
 	if err != nil {
 		return nil, nil, nil, err
 	}
+
+	// pod之前已经绑定过抢占: 现在判断那次抢占是否还合适
+	// 如果合适, preempt返回继续等待之前nominated node
+	// 否则, 挑选其它node作为preempt的nominated node
 	if !podEligibleToPreemptOthers(pod, g.cachedNodeInfoMap) {
 		// pod的nominatedNode已经在为preempt准备中了(正在结束其它的较小priority的pod)
 		klog.V(5).Infof("Pod %v/%v is not eligible for more preemption.", pod.Namespace, pod.Name)
 		return nil, nil, nil, nil
 	}
+
 	allNodes, err := nodeLister.List()
 	if err != nil {
 		return nil, nil, nil, err
@@ -1186,6 +1191,7 @@ func nodesWherePreemptionMightHelp(nodes []*v1.Node, failedPredicatesMap FailedP
 	potentialNodes := []*v1.Node{}
 	for _, node := range nodes {
 		unresolvableReasonExist := false
+		// 判断这个节点是否之前曾经失败过, 并且获取失败原因
 		failedPredicates, found := failedPredicatesMap[node.Name]
 		// If we assume that scheduler looks at all nodes and populates the failedPredicateMap
 		// (which is the case today), the !found case should never happen, but we'd prefer

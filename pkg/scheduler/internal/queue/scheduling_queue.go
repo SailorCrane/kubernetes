@@ -368,6 +368,7 @@ func (p *PriorityQueue) isPodBackingOff(pod *v1.Pod) bool {
 	if !exists {
 		return false
 	}
+	// 返回是否过期: 没有过期返回true
 	return boTime.After(p.clock.Now())
 }
 
@@ -405,20 +406,20 @@ func (p *PriorityQueue) AddUnschedulableIfNotPresent(pod *v1.Pod) error {
 		return fmt.Errorf("pod is already present in the backoffQ")
 	}
 
-    // 如果没有收到move请求, 表示没有资源加入: 放入unschedulableQ
+	// 如果没有收到move请求, 表示没有新资源加入可供调度pod: 先把放入unschedulableQ
+	// 随后有资源时, 将unschedulableQ中的backoff pod放入backoffQ中
+	// 随后有资源时, 将unschedulableQ中的非backoff pod放入ActiveQ中
 	if !p.receivedMoveRequest && isPodUnschedulable(pod) {
 		// backoffPod 表示已经失败过>= 2次了
-        // NOTE: 不放入activeQ中的原因是, 怕它一加入acitveQ头就失败, 导致循环加入activeQ的头中
-        // NOTE: 这样后面的activeQ中其它pod无法再被调度(一直重复头pod的失败)
-        p.backoffPod(pod)                       // NOTE: 标记pod属性为backoff
+        p.backoffPod(pod)                       // NOTE: 标记pod属性为backoff, 并且增加backoff值, 退避更长时间
 		p.unschedulableQ.addOrUpdate(pod)
 		p.nominatedPods.add(pod, "")
 		return nil
 	}
 
 	// If a move request has been received and the pod is subject to backoff, move it to the BackoffQ.
-    // 将已经失败过两次的pod,放入backoffQ中冷冻一段时间.
-    // 免得一致失败
+	// 如果收到move请求, 直接放入backoffQ开始冻结
+	// 将已经失败过两次的pod,放入backoffQ中冷冻一段时间, 免得一直失败
 	if p.isPodBackingOff(pod) && isPodUnschedulable(pod) {
 		err := p.podBackoffQ.Add(pod)
 		if err != nil {
@@ -612,8 +613,9 @@ func (p *PriorityQueue) MoveAllToActiveQueue() {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 	for _, pod := range p.unschedulableQ.pods {
-        // TODO: 为什么会出现在unshcedulableQ中的节点, 属性却是backOff
 		if p.isPodBackingOff(pod) {
+			// NOTE : 如果没有收到move请求, 失败时放入unschedulableQ中
+			// 收到move request 后, 放入podBackoffQ
 			if err := p.podBackoffQ.Add(pod); err != nil {
 				klog.Errorf("Error adding pod %v to the backoff queue: %v", pod.Name, err)
 			}
