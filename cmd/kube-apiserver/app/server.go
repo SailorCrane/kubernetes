@@ -91,12 +91,15 @@ const etcdRetryInterval = 1 * time.Second
 // NewAPIServerCommand creates a *cobra.Command object with default parameters
 func NewAPIServerCommand(stopCh <-chan struct{}) *cobra.Command {
 	s := options.NewServerRunOptions()
+
 	cmd := &cobra.Command{
 		Use: "kube-apiserver",
 		Long: `The Kubernetes API server validates and configures data
 for the api objects which include pods, services, replicationcontrollers, and
 others. The API Server services REST operations and provides the frontend to the
 cluster's shared state through which all other components interact.`,
+
+		// 在cmd.Execute()之前, 会cmd.Flags().Parse(), 将
 		RunE: func(cmd *cobra.Command, args []string) error {
 			verflag.PrintAndExitIfRequested()
 			utilflag.PrintFlags(cmd.Flags())
@@ -106,8 +109,7 @@ cluster's shared state through which all other components interact.`,
 			if err != nil {
 				return err
 			}
-
-            // TODO: 还没有找到cmd的flags是如何存储到 s := options.NewServerRunOptions()中的
+			// TODO: 还没有找到cmd的flags是如何存储到 s := options.NewServerRunOptions()中的
 			// validate options
 			if errs := completedOptions.Validate(); len(errs) != 0 {
 				return utilerrors.NewAggregate(errs)
@@ -120,9 +122,9 @@ cluster's shared state through which all other components interact.`,
     // fs/cmd.Flags() 在哪里使用?
 	fs := cmd.Flags()
 
-	namedFlagSets := s.Flags()      // 这里设置了很多flags
+	namedFlagSets := s.Flags()      // api-server的flag设置藏在这里
 
-    // add option to serverOption
+    // add option to namedFlagSets
 	verflag.AddFlags(namedFlagSets.FlagSet("global"))
 	globalflag.AddGlobalFlags(namedFlagSets.FlagSet("global"), cmd.Name())
 	options.AddCustomGlobalFlags(namedFlagSets.FlagSet("generic"))
@@ -130,6 +132,8 @@ cluster's shared state through which all other components interact.`,
     // serverOptions flags ------> cmd.Flags()
     // 以后cmd就可以使用fs.flags
     // 但是cmd.Flags 如何设置到s serverOption中的
+	// fs 添加option中的flagSet
+	// 解析后, 选项也存于option中
 	for _, f := range namedFlagSets.FlagSets {
 		fs.AddFlagSet(f)
 	}
@@ -562,17 +566,17 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 	}
 	s.ServiceClusterIPRange = serviceIPRange
 
-    // NOTE: 在这里生成tls相关证书(证书中包含ip和域名)
-    // s.GenericServerRunOptions.AdvertiseAddress : apiserver 对外ip
-    // apiServerServiceIP : apiserver 对内ip(serviceIPRange的第1个ip)
-    // 把这两个ip放到证书中(签发证书时需要ip/host_name/domain_name)
+	// NOTE: 在这里生成tls相关证书(证书中包含ip和域名)
+	// s.GenericServerRunOptions.AdvertiseAddress : apiserver 对外ip
+	// apiServerServiceIP : apiserver 对内ip(serviceIPRange的第1个ip)
+	// 把这两个ip放到证书中(签发证书时需要ip/host_name/domain_name)
 	if err := s.SecureServing.MaybeDefaultWithSelfSignedCerts(
-        s.GenericServerRunOptions.AdvertiseAddress.String(),
-        []string{"kubernetes.default.svc", "kubernetes.default", "kubernetes"}, []net.IP{apiServerServiceIP}); err != nil {
+		s.GenericServerRunOptions.AdvertiseAddress.String(),
+		[]string{"kubernetes.default.svc", "kubernetes.default", "kubernetes"}, []net.IP{apiServerServiceIP}); err != nil {
 		return options, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
-    // set ExternalHost
+	// set ExternalHost
 	if len(s.GenericServerRunOptions.ExternalHost) == 0 {
 		if len(s.GenericServerRunOptions.AdvertiseAddress) > 0 {
 			s.GenericServerRunOptions.ExternalHost = s.GenericServerRunOptions.AdvertiseAddress.String()

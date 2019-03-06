@@ -48,6 +48,7 @@ func init() {
 }
 
 // AdmissionOptions holds the admission options
+// admission 应该是由插件plugins控制的(相当于admission list)
 type AdmissionOptions struct {
 	// RecommendedPluginOrder holds an ordered list of plugin names we recommend to use by default
 	RecommendedPluginOrder []string
@@ -55,13 +56,13 @@ type AdmissionOptions struct {
 	DefaultOffPlugins sets.String
 
 	// EnablePlugins indicates plugins to be enabled passed through `--enable-admission-plugins`.
-	EnablePlugins []string
+	EnablePlugins []string          // 启用 admission ConfigFile中的admission config
 	// DisablePlugins indicates plugins to be disabled passed through `--disable-admission-plugins`.
-	DisablePlugins []string
+	DisablePlugins []string         // 禁用 admission ConfigFile中的admission config
 	// ConfigFile is the file path with admission control configuration.
-	ConfigFile string
+	ConfigFile string               // 设置 admission config
 	// Plugins contains all registered plugins.
-	Plugins *admission.Plugins
+	Plugins *admission.Plugins      // 插件列表, 在哪里注册?
 }
 
 // NewAdmissionOptions creates a new instance of AdmissionOptions

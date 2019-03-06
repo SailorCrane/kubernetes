@@ -82,13 +82,13 @@ func NewServerRunOptions() *ServerRunOptions {
 		SecureServing:           kubeoptions.NewSecureServingOptions(),
 		InsecureServing:         kubeoptions.NewInsecureServingOptions(),
 		Audit:                   genericoptions.NewAuditOptions(),
-		Features:                genericoptions.NewFeatureOptions(),
+		Features:                genericoptions.NewFeatureOptions(),        // 一些特性: 是否开启profile, 是否开启swaggerUI
 		Admission:               kubeoptions.NewAdmissionOptions(),
 		Authentication:          kubeoptions.NewBuiltInAuthenticationOptions().WithAll(),
 		Authorization:           kubeoptions.NewBuiltInAuthorizationOptions(),
 		CloudProvider:           kubeoptions.NewCloudProviderOptions(),
 		StorageSerialization:    kubeoptions.NewStorageSerializationOptions(),
-		APIEnablement:           genericoptions.NewAPIEnablementOptions(),
+		APIEnablement:           genericoptions.NewAPIEnablementOptions(),   // 开启哪些api
 
 		EnableLogsHandler:      true,
 		EventTTL:               1 * time.Hour,

@@ -24,6 +24,8 @@ import (
 
 type ConfigurationMap map[string]string
 
+// 主要是实现了pflags所需的 Set(), Type()方法
+
 func (m *ConfigurationMap) String() string {
 	pairs := []string{}
 	for k, v := range *m {
