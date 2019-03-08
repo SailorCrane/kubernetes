@@ -52,6 +52,7 @@ type SecureServingOptions struct {
 	Listener net.Listener
 
 	// ServerCert is the TLS cert info for serving secure traffic
+	// 如果没有指定证书和私钥, 自己生成的又无法写入文件(那么证书和秘钥放入这个内存字段)
 	ServerCert GeneratableKeyCert
 	// SNICertKeys are named CertKeys for serving secure traffic with SNI support.
 	SNICertKeys []utilflag.NamedCertKey
@@ -269,12 +270,12 @@ func (s *SecureServingOptions) ApplyTo(config **server.SecureServingInfo) error 
 
 func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress string, alternateDNS []string, alternateIPs []net.IP) error {
 
-    // 如果不使用secure/https, 直接返回
+	// 如果不使用secure/https, 直接返回
 	if s == nil || (s.BindPort == 0 && s.Listener == nil) {
 		return nil
 	}
 
-    // 如果已经有证书, 不再生成证书
+	// 如果已经有证书, 不需要在代码中再生成证书
 	keyCert := &s.ServerCert.CertKey
 	if len(keyCert.CertFile) != 0 || len(keyCert.KeyFile) != 0 {
 		return nil
@@ -282,6 +283,8 @@ func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress str
 
 	canReadCertAndKey := false
 	if len(s.ServerCert.CertDirectory) > 0 {
+		// pairName是"apiserver": 用来作为key 和cert文件的前缀名
+		// 因为放在"/var/run/kubernetes" == CertDirectory目录中, 为了和其它组件的证书相互区分
 		if len(s.ServerCert.PairName) == 0 {
 			return fmt.Errorf("PairName is required if CertDirectory is set")
 		}
@@ -294,10 +297,10 @@ func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress str
 		}
 	}
 
-    // 都不可以read: 说明key + cert都不存在, 生成key + cert
+	// 都不可以read: 说明key + cert都不存在, 生成key + cert
 	if !canReadCertAndKey {
 		// add either the bind address or localhost to the valid alternates
-        // alternateDNS alternateIPs是cert证书中的字段: 表示服务器的地址和域名
+		// alternateDNS alternateIPs是cert证书中的字段: 表示服务器的地址和域名
 		bindIP := s.BindAddress.String()
 		if bindIP == "0.0.0.0" {
 			alternateDNS = append(alternateDNS, "localhost")
@@ -305,7 +308,7 @@ func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress str
 			alternateIPs = append(alternateIPs, s.BindAddress)
 		}
 
-        // 生成自签名key + cert
+		// 生成自签名key + cert
 		if cert, key, err := certutil.GenerateSelfSignedCertKeyWithFixtures(publicAddress, alternateIPs, alternateDNS, s.ServerCert.FixtureDirectory); err != nil {
 			return fmt.Errorf("unable to generate self signed cert: %v", err)
 		} else if len(keyCert.CertFile) > 0 && len(keyCert.KeyFile) > 0 {
@@ -318,7 +321,8 @@ func (s *SecureServingOptions) MaybeDefaultWithSelfSignedCerts(publicAddress str
 			}
 			klog.Infof("Generated self-signed cert (%s, %s)", keyCert.CertFile, keyCert.KeyFile)
 		} else {
-            // 如果没有配置写入文件路径: 那么写入s.ServerCert.GeneratedCert字段
+			// 如果没有配置写入文件路径: 那么写入option.ServerCert.GeneratedCert字段
+			// 放置在内存中
 			tlsCert, err := tls.X509KeyPair(cert, key)
 			if err != nil {
 				return fmt.Errorf("unable to generate self signed cert: %v", err)

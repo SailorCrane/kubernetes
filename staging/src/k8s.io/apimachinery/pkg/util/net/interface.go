@@ -214,6 +214,8 @@ func getMatchingGlobalIP(addrs []net.Addr, family AddressFamily) (net.IP, error)
 				return nil, err
 			}
 			if memberOf(ip, family) {
+
+                // 只要是和外界可以通信的ip即可: 192.168.1.1也是合法的(127.0.0.1不合法)
 				if ip.IsGlobalUnicast() {
 					klog.V(4).Infof("IP found %v", ip)
 					return ip, nil
@@ -237,11 +239,14 @@ func getIPFromInterface(intfName string, forFamily AddressFamily, nw networkInte
 		return nil, err
 	}
 	if isInterfaceUp(intf) {
+
+		// 获取网卡接口的ip, 一个网卡可能有多个ip
 		addrs, err := nw.Addrs(intf)
 		if err != nil {
 			return nil, err
 		}
 		klog.V(4).Infof("Interface %q has %d addresses :%v.", intfName, len(addrs), addrs)
+        // 在多个ip中选择一个合法的ip(比如: 192.168.1.1)
 		matchingIP, err := getMatchingGlobalIP(addrs, forFamily)
 		if err != nil {
 			return nil, err
@@ -381,6 +386,7 @@ func getAllDefaultRoutes() ([]Route, error) {
 // global IP address from the interface for the route. Will first look all each IPv4 route for
 // an IPv4 IP, and then will look at each IPv6 route for an IPv6 IP.
 func chooseHostInterfaceFromRoute(routes []Route, nw networkInterfacer) (net.IP, error) {
+	// 在网卡上选择第一个合法ip
 	for _, family := range []AddressFamily{familyIPv4, familyIPv6} {
 		klog.V(4).Infof("Looking for default routes with IPv%d addresses", uint(family))
 		for _, route := range routes {
@@ -388,7 +394,7 @@ func chooseHostInterfaceFromRoute(routes []Route, nw networkInterfacer) (net.IP,
 				continue
 			}
 			klog.V(4).Infof("Default route transits interface %q", route.Interface)
-			// 获取与默认路由所连接的网卡ip, 作为默认ip
+			// NOTE: 获取与默认路由所连接的网卡ip, 作为默认ip
 			finalIP, err := getIPFromInterface(route.Interface, family, nw)
 			if err != nil {
 				return nil, err
@@ -408,6 +414,8 @@ func chooseHostInterfaceFromRoute(routes []Route, nw networkInterfacer) (net.IP,
 // interface.
 func ChooseBindAddress(bindAddress net.IP) (net.IP, error) {
 	if bindAddress == nil || bindAddress.IsUnspecified() || bindAddress.IsLoopback() {
+		// 根据默认路由, 选择一个合法ip, 作为apiserver监听的地址
+		// 这个文件直接copy出去, 就可以使用(用来选择默认的ip)
 		hostIP, err := ChooseHostInterface()
 		if err != nil {
 			return nil, err

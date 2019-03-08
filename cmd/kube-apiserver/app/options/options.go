@@ -84,7 +84,11 @@ func NewServerRunOptions() *ServerRunOptions {
 		Audit:                   genericoptions.NewAuditOptions(),
 		Features:                genericoptions.NewFeatureOptions(),        // 一些特性: 是否开启profile, 是否开启swaggerUI
 		Admission:               kubeoptions.NewAdmissionOptions(),
+
+		// NOTE: 认证: 包括ServiceAccout的功能都在这里配置
 		Authentication:          kubeoptions.NewBuiltInAuthenticationOptions().WithAll(),
+
+		// 授权: RBCA mode等
 		Authorization:           kubeoptions.NewBuiltInAuthorizationOptions(),
 		CloudProvider:           kubeoptions.NewCloudProviderOptions(),
 		StorageSerialization:    kubeoptions.NewStorageSerializationOptions(),

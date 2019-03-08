@@ -99,7 +99,7 @@ for the api objects which include pods, services, replicationcontrollers, and
 others. The API Server services REST operations and provides the frontend to the
 cluster's shared state through which all other components interact.`,
 
-		// 在cmd.Execute()之前, 会cmd.Flags().Parse(), 将
+		// 在cmd.Execute()之前, 会cmd.Flags().Parse(), 将命令行的os.Args解析到cmd.Flags配置的value地址中
 		RunE: func(cmd *cobra.Command, args []string) error {
 			verflag.PrintAndExitIfRequested()
 			utilflag.PrintFlags(cmd.Flags())
@@ -109,7 +109,6 @@ cluster's shared state through which all other components interact.`,
 			if err != nil {
 				return err
 			}
-			// TODO: 还没有找到cmd的flags是如何存储到 s := options.NewServerRunOptions()中的
 			// validate options
 			if errs := completedOptions.Validate(); len(errs) != 0 {
 				return utilerrors.NewAggregate(errs)
@@ -158,6 +157,7 @@ func Run(completeOptions completedServerRunOptions, stopCh <-chan struct{}) erro
 	// To help debugging, immediately log version
 	klog.Infof("Version: %+v", version.Get())
 
+	// 准备server相关事宜
 	server, err := CreateServerChain(completeOptions, stopCh)
 	if err != nil {
 		return err
@@ -168,6 +168,8 @@ func Run(completeOptions completedServerRunOptions, stopCh <-chan struct{}) erro
 
 // CreateServerChain creates the apiservers connected via delegation.
 func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan struct{}) (*genericapiserver.GenericAPIServer, error) {
+
+	// NOTE: 猜测是用来连接kubelet的端口创建等等(似乎是连接kube-proxy的)
 	nodeTunneler, proxyTransport, err := CreateNodeDialer(completedOptions)
 	if err != nil {
 		return nil, err
@@ -189,7 +191,7 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 		return nil, err
 	}
 
-    // 其中包括handler的创建等
+	// 其中包括handler的创建等
 	kubeAPIServer, err := CreateKubeAPIServer(kubeAPIServerConfig, apiExtensionsServer.GenericAPIServer, admissionPostStartHook)
 	if err != nil {
 		return nil, err
@@ -238,10 +240,14 @@ func CreateKubeAPIServer(kubeAPIServerConfig *master.Config, delegateAPIServer g
 }
 
 // CreateNodeDialer creates the dialer infrastructure to connect to the nodes.
+// 用来连接node kubelet
 func CreateNodeDialer(s completedServerRunOptions) (tunneler.Tunneler, *http.Transport, error) {
 	// Setup nodeTunneler if needed
 	var nodeTunneler tunneler.Tunneler
 	var proxyDialerFn utilnet.DialFunc
+
+	// sshuser 是一个已经废除的option, 具体见apiser's options中
+	// 应该就是使用ssh隧道, 与client通信
 	if len(s.SSHUser) > 0 {
 		// Get ssh key distribution func, if supported
 		var installSSHKey tunneler.InstallSSHKey
@@ -274,11 +280,14 @@ func CreateNodeDialer(s completedServerRunOptions) (tunneler.Tunneler, *http.Tra
 		proxyDialerFn = nodeTunneler.Dial
 	}
 	// Proxying to pods and services is IP-based... don't expect to be able to verify the hostname
-	proxyTLSClientConfig := &tls.Config{InsecureSkipVerify: true}
+	proxyTLSClientConfig := &tls.Config{InsecureSkipVerify: true}       // 不需要使用CA验证client/kubelet的公钥证书
 	proxyTransport := utilnet.SetTransportDefaults(&http.Transport{
 		DialContext:     proxyDialerFn,
 		TLSClientConfig: proxyTLSClientConfig,
 	})
+
+	// NOTE: node dialer似乎和kubelet无关, 而和kube-proxy有关
+	// 返回ssh-tunnerler, tlsTransport
 	return nodeTunneler, proxyTransport, nil
 }
 
@@ -298,12 +307,14 @@ func CreateKubeAPIServerConfig(
 	var genericConfig *genericapiserver.Config
 	var storageFactory *serverstorage.DefaultStorageFactory
 	var versionedInformers clientgoinformers.SharedInformerFactory
+
+	// TODO: 干了什么?
 	genericConfig, versionedInformers, insecureServingInfo, serviceResolver, pluginInitializers, admissionPostStartHook, storageFactory, lastErr = buildGenericConfig(s.ServerRunOptions, proxyTransport)
 	if lastErr != nil {
 		return
 	}
 
-    // etcd连接?
+	// etcd连接?
 	if _, port, err := net.SplitHostPort(s.Etcd.StorageConfig.Transport.ServerList[0]); err == nil && port != "0" && len(port) != 0 {
 		if err := utilwait.PollImmediate(etcdRetryInterval, etcdRetryLimit*etcdRetryInterval, preflight.EtcdConnection{ServerList: s.Etcd.StorageConfig.Transport.ServerList}.CheckEtcdServers); err != nil {
 			lastErr = fmt.Errorf("error waiting for etcd connection: %v", err)
@@ -311,7 +322,7 @@ func CreateKubeAPIServerConfig(
 		}
 	}
 
-    // 资源类
+	// TODO: 感觉是驱动docker的选项
 	capabilities.Initialize(capabilities.Capabilities{
 		AllowPrivileged: s.AllowPrivileged,
 		// TODO(vmarmol): Implement support for HostNetworkSources.
@@ -323,6 +334,7 @@ func CreateKubeAPIServerConfig(
 		PerConnectionBandwidthLimitBytesPerSec: s.MaxConnectionBytesPerSec,
 	})
 
+	// cluster ip range, pod分配用
 	serviceIPRange, apiServerServiceIP, lastErr := master.DefaultServiceIPRange(s.ServiceClusterIPRange)
 	if lastErr != nil {
 		return
@@ -332,6 +344,8 @@ func CreateKubeAPIServerConfig(
 	if lastErr != nil {
 		return
 	}
+
+	// TODO: 不懂 requestHeader proxyCA是什么, 是proxy的CA?
 	requestHeaderProxyCA, lastErr := readCAorNil(s.Authentication.RequestHeader.ClientCAFile)
 	if lastErr != nil {
 		return
@@ -549,7 +563,7 @@ type completedServerRunOptions struct {
 
 // Complete set default ServerRunOptions.
 // Should be called after kube-apiserver flags parsed.
-// 这里Complete的是整个程序最上层的option
+// 这里Complete的是整个程序最上层的option, 然后返回一个completed option
 func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 	var options completedServerRunOptions
 
@@ -559,29 +573,35 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		return options, err
 	}
 
-	// 如果之前secure没有设置ip
+	// 如果之前secure没有设置ip, 那么自动设置一个ip
 	if err := kubeoptions.DefaultAdvertiseAddress(s.GenericServerRunOptions, s.InsecureServing.DeprecatedInsecureServingOptions); err != nil {
 		return options, err
 	}
 
-    // apiServerServiceIP 是 IPRange中的第一个地址: 用于和Node节点通信
+	// ServiceClusterIPRange 用来给pod分配地址(用于pod间通信)
+	// apiServerServiceIP 是 IPRange中的第一个地址: 用于和Node节点通信
+	// --service-cluster-ip-range : 指定pod的网络range
+	// 如果命令行没有指定这个options, 会返回一个默认的serviceIPRange == kubeoptions.DefaultServiceIPCIDR
 	serviceIPRange, apiServerServiceIP, err := master.DefaultServiceIPRange(s.ServiceClusterIPRange)
 	if err != nil {
 		return options, fmt.Errorf("error determining service IP ranges: %v", err)
 	}
 	s.ServiceClusterIPRange = serviceIPRange
 
-	// NOTE: 在这里生成tls相关证书(证书中包含ip和域名)
+	// NOTE: 查看证书是否指定: 如果没有, 生成自签名证书
+	// NOTE: 自签名证书猜测: 既是CA, 又是证书
 	// s.GenericServerRunOptions.AdvertiseAddress : apiserver 对外ip
 	// apiServerServiceIP : apiserver 对内ip(serviceIPRange的第1个ip)
 	// 把这两个ip放到证书中(签发证书时需要ip/host_name/domain_name)
+	// NOTE: 如果要查看secureServing的setFlags, 通过这个函数跳转进去(然后搜索SetFlags即可)
 	if err := s.SecureServing.MaybeDefaultWithSelfSignedCerts(
 		s.GenericServerRunOptions.AdvertiseAddress.String(),
 		[]string{"kubernetes.default.svc", "kubernetes.default", "kubernetes"}, []net.IP{apiServerServiceIP}); err != nil {
 		return options, fmt.Errorf("error creating self-signed certificates: %v", err)
 	}
 
-	// set ExternalHost
+	// set AdvertiseAddress ------> ExternalHost
+	// set AdvertiseAddress ------> generic.hostname
 	if len(s.GenericServerRunOptions.ExternalHost) == 0 {
 		if len(s.GenericServerRunOptions.AdvertiseAddress) > 0 {
 			s.GenericServerRunOptions.ExternalHost = s.GenericServerRunOptions.AdvertiseAddress.String()
@@ -595,7 +615,8 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		klog.Infof("external host was not specified, using %v", s.GenericServerRunOptions.ExternalHost)
 	}
 
-    // 根据authorization 修改authentication选项
+	// 根据authorization 设置authentication选项
+	// authentication ------> authorization
 	s.Authentication.ApplyAuthorization(s.Authorization)
 
 	// Use (ServiceAccountSigningKeyFile != "") as a proxy to the user enabling
@@ -614,15 +635,15 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		}
 	}
 
-    // 如果使用jwt: json web token, 私钥为s.ServiceAccountSigningKeyFile
+	// 如果使用jwt: json web token, 私钥为s.ServiceAccountSigningKeyFile, 应该是用来jwt签名
 	if s.ServiceAccountSigningKeyFile != "" && s.Authentication.ServiceAccounts.Issuer != "" {
 		sk, err := certutil.PrivateKeyFromFile(s.ServiceAccountSigningKeyFile)
 		if err != nil {
 			return options, fmt.Errorf("failed to parse service-account-issuer-key-file: %v", err)
 		}
 
-        // 2^ 32 大概 136年
-        // key有效期限
+		// 2^ 32 大概 136年
+		// key有效期限
 		if s.Authentication.ServiceAccounts.MaxExpiration != 0 {
 			lowBound := time.Hour
 			upBound := time.Duration(1<<32) * time.Second
@@ -632,7 +653,7 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 			}
 		}
 
-        // jwt generator设置: 包括key, algo, issuer
+		// jwt generator设置: 包括key, algo, issuer
 		s.ServiceAccountIssuer, err = serviceaccount.JWTTokenGenerator(s.Authentication.ServiceAccounts.Issuer, sk)
 		if err != nil {
 			return options, fmt.Errorf("failed to build token generator: %v", err)
@@ -640,19 +661,22 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 		s.ServiceAccountTokenMaxExpiration = s.Authentication.ServiceAccounts.MaxExpiration
 	}
 
+
 	if s.Etcd.EnableWatchCache {
 		klog.V(2).Infof("Initializing cache sizes based on %dMB limit", s.GenericServerRunOptions.TargetRAMMB)
 
-        // map[GroupResource] int: GroupResource到底是什么?
+		// map[GroupResource] int: GroupResource到底是什么?
 		sizes := cachesize.NewHeuristicWatchCacheSizes(s.GenericServerRunOptions.TargetRAMMB)
-        // sizes.update(userSpecified)
+		// sizes.update(userSpecified)
 		if userSpecified, err := serveroptions.ParseWatchCacheSizes(s.Etcd.WatchCacheSizes); err == nil {
+			// 用户指定的cache size覆盖系统计算出来的默认size
 			for resource, size := range userSpecified {
 				sizes[resource] = size
 			}
 		}
 
-        // save sizes to s.Etcd.WatchCacheSizes
+		// save sizes to s.Etcd.WatchCacheSizes
+		// 把watch size存储到etcd中
 		s.Etcd.WatchCacheSizes, err = serveroptions.WriteWatchCacheSizes(sizes)
 		if err != nil {
 			return options, err
@@ -660,6 +684,7 @@ func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 	}
 
 	// TODO: remove when we stop supporting the legacy group version.
+	// TODO: apienablement, 或许跟请求路由的路径有关, 有需要回头再读
 	if s.APIEnablement.RuntimeConfig != nil {
 		for key, value := range s.APIEnablement.RuntimeConfig {
 			if key == "v1" || strings.HasPrefix(key, "v1/") ||

@@ -31,7 +31,7 @@ func NewSecureServingOptions() *genericoptions.SecureServingOptionsWithLoopback 
 	o := genericoptions.SecureServingOptions{
 		BindAddress: net.ParseIP("0.0.0.0"),
 		BindPort:    6443,
-		Required:    true,
+		Required:    true,              // 是否必须开启https, 这里是必须的
 		ServerCert: genericoptions.GeneratableKeyCert{
 			PairName:      "apiserver",
 			CertDirectory: "/var/run/kubernetes",           // cert_directory/pairname.{key, cert}
@@ -60,6 +60,7 @@ func DefaultAdvertiseAddress(s *genericoptions.ServerRunOptions, insecure *gener
 	}
 
 	if s.AdvertiseAddress == nil || s.AdvertiseAddress.IsUnspecified() {
+		// 如果有ip, 返回. 没有ip: 根据默认路由器选择一个ip
 		hostIP, err := utilnet.ChooseBindAddress(insecure.BindAddress)
 		if err != nil {
 			return fmt.Errorf("unable to find suitable network address.error='%v'. "+

@@ -39,13 +39,13 @@ import (
 
 type BuiltInAuthenticationOptions struct {
 	APIAudiences    []string
-	Anonymous       *AnonymousAuthenticationOptions
-	BootstrapToken  *BootstrapTokenAuthenticationOptions
-	ClientCert      *genericoptions.ClientCertAuthenticationOptions
+	Anonymous       *AnonymousAuthenticationOptions             // 包装了一个enable变量
+	BootstrapToken  *BootstrapTokenAuthenticationOptions        // 也包装了一个enable变量
+	ClientCert      *genericoptions.ClientCertAuthenticationOptions     // 内含ca文件: 用来certificate client cert
 	OIDC            *OIDCAuthenticationOptions
 	PasswordFile    *PasswordFileAuthenticationOptions
-	RequestHeader   *genericoptions.RequestHeaderAuthenticationOptions
-	ServiceAccounts *ServiceAccountAuthenticationOptions
+	RequestHeader   *genericoptions.RequestHeaderAuthenticationOptions      // TODO: 不懂
+	ServiceAccounts *ServiceAccountAuthenticationOptions                    // SA功能配置在这里, 着重看一下, 虽然可能不明所以
 	TokenFile       *TokenFileAuthenticationOptions
 	WebHook         *WebHookAuthenticationOptions
 
@@ -101,7 +101,7 @@ func NewBuiltInAuthenticationOptions() *BuiltInAuthenticationOptions {
 }
 
 func (s *BuiltInAuthenticationOptions) WithAll() *BuiltInAuthenticationOptions {
-    // link method(which return it's self) :by Crane
+	// link method(which return it's self) :by Crane
 	return s.
 		WithAnonymous().
 		WithBootstrapToken().

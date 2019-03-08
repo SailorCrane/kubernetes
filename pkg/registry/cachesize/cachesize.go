@@ -33,6 +33,7 @@ func NewHeuristicWatchCacheSizes(expectedRAMCapacityMB int) map[schema.GroupReso
 	// is supposed to have non-default value.
 	//
 	// TODO: Figure out which resource we should have non-default value.
+	// 为每个资源分配CacheSize
 	watchCacheSizes := make(map[schema.GroupResource]int)
 	watchCacheSizes[schema.GroupResource{Resource: "replicationcontrollers"}] = maxInt(5*clusterSize, 100)
 	watchCacheSizes[schema.GroupResource{Resource: "endpoints"}] = maxInt(10*clusterSize, 1000)
