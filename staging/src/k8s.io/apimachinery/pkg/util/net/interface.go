@@ -362,6 +362,7 @@ func (_ networkInterface) Interfaces() ([]net.Interface, error) {
 // routing info file (which is optional), we'll just use the IPv4 route information.
 // Using all the routing info, if no default routes are found, an error is returned.
 func getAllDefaultRoutes() ([]Route, error) {
+    // NOTE: 获取所有的默认路由(即0.0.0.0路由)
 	routes, err := v4File.extract()
 	if err != nil {
 		return nil, err
@@ -387,6 +388,7 @@ func chooseHostInterfaceFromRoute(routes []Route, nw networkInterfacer) (net.IP,
 				continue
 			}
 			klog.V(4).Infof("Default route transits interface %q", route.Interface)
+			// 获取与默认路由所连接的网卡ip, 作为默认ip
 			finalIP, err := getIPFromInterface(route.Interface, family, nw)
 			if err != nil {
 				return nil, err

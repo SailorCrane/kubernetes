@@ -635,6 +635,7 @@ func (c *configFactory) deletePodFromCache(obj interface{}) {
 }
 
 func (c *configFactory) addNodeToCache(obj interface{}) {
+
 	node, ok := obj.(*v1.Node)
 	if !ok {
 		klog.Errorf("cannot convert to *v1.Node: %v", obj)

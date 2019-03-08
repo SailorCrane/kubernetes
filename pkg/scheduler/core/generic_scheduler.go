@@ -482,7 +482,7 @@ func (g *genericScheduler) findNodesThatFit(pod *v1.Pod, nodes []*v1.Node) ([]*v
 		errs := errors.MessageCountMap{}
 		var (
 			predicateResultLock sync.Mutex
-			filteredLen         int32
+			filteredLen         int32       // succ_count
 		)
 
 		ctx, cancel := context.WithCancel(context.Background())

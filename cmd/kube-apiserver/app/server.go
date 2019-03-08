@@ -549,12 +549,17 @@ type completedServerRunOptions struct {
 
 // Complete set default ServerRunOptions.
 // Should be called after kube-apiserver flags parsed.
+// 这里Complete的是整个程序最上层的option
 func Complete(s *options.ServerRunOptions) (completedServerRunOptions, error) {
 	var options completedServerRunOptions
+
 	// set defaults
+	// 设置s.Generic.AdvertiseAddress == secure.host
 	if err := s.GenericServerRunOptions.DefaultAdvertiseAddress(s.SecureServing.SecureServingOptions); err != nil {
 		return options, err
 	}
+
+	// 如果之前secure没有设置ip
 	if err := kubeoptions.DefaultAdvertiseAddress(s.GenericServerRunOptions, s.InsecureServing.DeprecatedInsecureServingOptions); err != nil {
 		return options, err
 	}
