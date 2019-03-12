@@ -69,6 +69,7 @@ func createAPIExtensionsConfig(
 		return nil, err
 	}
 
+	// extension的config也分为 Generic + Extra
 	apiextensionsConfig := &apiextensionsapiserver.Config{
 		GenericConfig: &genericapiserver.RecommendedConfig{
 			Config:                genericConfig,

@@ -175,6 +175,8 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 		return nil, err
 	}
 
+
+	// admissionPostStartHook在创建apiserver时, 注册到postHook中
 	kubeAPIServerConfig, insecureServingInfo, serviceResolver, pluginInitializer, admissionPostStartHook, err := CreateKubeAPIServerConfig(completedOptions, nodeTunneler, proxyTransport)
 	if err != nil {
 		return nil, err
@@ -186,12 +188,18 @@ func CreateServerChain(completedOptions completedServerRunOptions, stopCh <-chan
 	if err != nil {
 		return nil, err
 	}
+
+	// TODO: 猜测extension 应该是可以定制的api extension(custom) apiExtensionsServer
+	// extensions server 对应k8s api中的extensions/api ?
+	// kubeAPIServer则是k8s原生的
+	// 并且在其中安装 apiGroup
 	apiExtensionsServer, err := createAPIExtensionsServer(apiExtensionsConfig, genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, err
 	}
 
 	// 其中包括handler的创建等
+	// NOTE: 把前面创建的apiExtensionsServer传入创建kubeAPIServer的参数中
 	kubeAPIServer, err := CreateKubeAPIServer(kubeAPIServerConfig, apiExtensionsServer.GenericAPIServer, admissionPostStartHook)
 	if err != nil {
 		return nil, err
@@ -292,6 +300,7 @@ func CreateNodeDialer(s completedServerRunOptions) (tunneler.Tunneler, *http.Tra
 }
 
 // CreateKubeAPIServerConfig creates all the resources for running the API server, but runs none of them
+// 其中之一就是option ------> config
 func CreateKubeAPIServerConfig(
 	s completedServerRunOptions,
 	nodeTunneler tunneler.Tunneler,
@@ -308,7 +317,8 @@ func CreateKubeAPIServerConfig(
 	var storageFactory *serverstorage.DefaultStorageFactory
 	var versionedInformers clientgoinformers.SharedInformerFactory
 
-	// TODO: 干了什么?
+	// TODO: 干了什么? serviceResolver是干嘛的?
+	// option ------> config: 把命令行的option转为config
 	genericConfig, versionedInformers, insecureServingInfo, serviceResolver, pluginInitializers, admissionPostStartHook, storageFactory, lastErr = buildGenericConfig(s.ServerRunOptions, proxyTransport)
 	if lastErr != nil {
 		return
@@ -351,6 +361,7 @@ func CreateKubeAPIServerConfig(
 		return
 	}
 
+	// config包括GenericConfig + ExtraConfig
 	config = &master.Config{
 		GenericConfig: genericConfig,
 		ExtraConfig: master.ExtraConfig{
@@ -398,6 +409,7 @@ func CreateKubeAPIServerConfig(
 }
 
 // BuildGenericConfig takes the master server options and produces the genericapiserver.Config associated with it
+// option ------> config
 func buildGenericConfig(
 	s *options.ServerRunOptions,
 	proxyTransport *http.Transport,
@@ -418,6 +430,8 @@ func buildGenericConfig(
 		return
 	}
 
+	// option ------> config
+	// 命令行已经设置过选项了, 这里还要再次applyTo到config中
 	if lastErr = s.InsecureServing.ApplyTo(&insecureServingInfo, &genericConfig.LoopbackClientConfig); lastErr != nil {
 		return
 	}
@@ -434,6 +448,7 @@ func buildGenericConfig(
 		return
 	}
 
+	// openapi相关
 	genericConfig.OpenAPIConfig = genericapiserver.DefaultOpenAPIConfig(generatedopenapi.GetOpenAPIDefinitions, openapinamer.NewDefinitionNamer(legacyscheme.Scheme, extensionsapiserver.Scheme, aggregatorscheme.Scheme))
 	genericConfig.OpenAPIConfig.PostProcessSpec = postProcessOpenAPISpecForBackwardCompatibility
 	genericConfig.OpenAPIConfig.Info.Title = "Kubernetes"
@@ -446,6 +461,7 @@ func buildGenericConfig(
 	kubeVersion := version.Get()
 	genericConfig.Version = &kubeVersion
 
+	// 关于storage相关的, 都先忽略(和etcd还有反序列化相关?)
 	storageFactoryConfig := kubeapiserver.NewStorageFactoryConfig()
 	storageFactoryConfig.ApiResourceConfig = genericConfig.MergedResourceConfig
 	completedStorageFactoryConfig, err := storageFactoryConfig.Complete(s.Etcd, s.StorageSerialization)
@@ -495,6 +511,8 @@ func buildGenericConfig(
 		LoopbackClientConfig: genericConfig.LoopbackClientConfig,
 		CloudConfigFile:      s.CloudProvider.CloudConfigFile,
 	}
+
+	// TODO: 感觉和service的转发有关
 	serviceResolver = buildServiceResolver(s.EnableAggregatorRouting, genericConfig.LoopbackClientConfig.Host, versionedInformers)
 
 	authInfoResolverWrapper := webhook.NewDefaultAuthenticationInfoResolverWrapper(proxyTransport, genericConfig.LoopbackClientConfig)
@@ -513,6 +531,7 @@ func buildGenericConfig(
 		return
 	}
 
+	// admissionConfig ------> admission hook
 	pluginInitializers, admissionPostStartHook, err = admissionConfig.New(proxyTransport, serviceResolver)
 	if err != nil {
 		lastErr = fmt.Errorf("failed to create admission plugin initializer: %v", err)

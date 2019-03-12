@@ -243,6 +243,7 @@ func (c *Config) createEndpointReconciler() reconcilers.EndpointReconciler {
 
 // Complete fills in any fields not set that are required to have valid data. It's mutating the receiver.
 func (cfg *Config) Complete() CompletedConfig {
+	// 不仅option需要Complete(), config也需要Complete()
 	c := completedConfig{
 		cfg.GenericConfig.Complete(cfg.ExtraConfig.VersionedInformers),
 		&cfg.ExtraConfig,
@@ -259,6 +260,7 @@ func (cfg *Config) Complete() CompletedConfig {
 		c.ExtraConfig.APIServerServiceIP = apiServerServiceIP
 	}
 
+	// CIDR rule后面可能会用到
 	discoveryAddresses := discovery.DefaultAddresses{DefaultAddress: c.GenericConfig.ExternalAddress}
 	discoveryAddresses.CIDRRules = append(discoveryAddresses.CIDRRules,
 		discovery.CIDRRule{IPRange: c.ExtraConfig.ServiceIPRange, Address: net.JoinHostPort(c.ExtraConfig.APIServerServiceIP.String(), strconv.Itoa(c.ExtraConfig.APIServerServicePort))})
@@ -293,13 +295,16 @@ func (cfg *Config) Complete() CompletedConfig {
 // Certain config fields must be specified, including:
 //   KubeletClientConfig
 
-// crane: install api在这里处理
+// NOTE:   install api在这里处理
+// 同样的: extensionServer的install也是在一个Complete().New()中处理
+// extension 相应New()位置: staging/src/k8s.io/apiextensions-apiserver/pkg/apiserver/apiserver.go
+// NOTE: 这里返回值和extension的New略有不同, 返回的是Master对象
 func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget) (*Master, error) {
 	if reflect.DeepEqual(c.ExtraConfig.KubeletClientConfig, kubeletclient.KubeletClientConfig{}) {
 		return nil, fmt.Errorf("Master.New() called with empty config.KubeletClientConfig")
 	}
 
-    // 创建server s, delegationTarget
+	// 创建server ,传入delegationTarget(这里是extension api server)
 	s, err := c.GenericConfig.New("kube-apiserver", delegationTarget)
 	if err != nil {
 		return nil, err
@@ -309,12 +314,13 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		routes.Logs{}.Install(s.Handler.GoRestfulContainer)
 	}
 
-    // 创建master: 内含apiserver
+	// 创建master: 内含apiserver
 	m := &Master{
 		GenericAPIServer: s,
 	}
 
 	// install legacy rest storage
+	// NOTE: API来自于Provider, 所以关于api的具体逻辑, 进入provider中阅读即可
 	if c.ExtraConfig.APIResourceConfigSource.VersionEnabled(apiv1.SchemeGroupVersion) {
 		legacyRESTStorageProvider := corerest.LegacyRESTStorageProvider{
 			StorageFactory:              c.ExtraConfig.StorageFactory,
@@ -338,6 +344,8 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 	// with specific priorities.
 	// TODO: describe the priority all the way down in the RESTStorageProviders and plumb it back through the various discovery
 	// handlers that we have.
+
+	// NOTE: API来自于Provider, 所以关于api的具体逻辑, 进入provider中阅读即可
 	restStorageProviders := []RESTStorageProvider{
 		auditregistrationrest.RESTStorageProvider{},
 		authenticationrest.RESTStorageProvider{Authenticator: c.GenericConfig.Authentication.Authenticator, APIAudiences: c.GenericConfig.Authentication.APIAudiences},
@@ -365,6 +373,7 @@ func (c completedConfig) New(delegationTarget genericapiserver.DelegationTarget)
 		m.installTunneler(c.ExtraConfig.Tunneler, corev1client.NewForConfigOrDie(c.GenericConfig.LoopbackClientConfig).Nodes())
 	}
 
+	// TODO: CA post start hook: 检查kube-client的ca?
 	m.GenericAPIServer.AddPostStartHookOrDie("ca-registration", c.ExtraConfig.ClientCARegistrationHook.PostStartHook)
 
 	return m, nil

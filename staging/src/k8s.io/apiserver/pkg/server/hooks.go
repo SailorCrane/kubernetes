@@ -82,6 +82,7 @@ func (s *GenericAPIServer) AddPostStartHook(name string, hook PostStartHookFunc)
 	s.postStartHookLock.Lock()
 	defer s.postStartHookLock.Unlock()
 
+	// 如果post hook已经开始运行了, 那么不能再注册postHook
 	if s.postStartHooksCalled {
 		return fmt.Errorf("unable to add %q because PostStartHooks have already been called", name)
 	}
@@ -93,6 +94,8 @@ func (s *GenericAPIServer) AddPostStartHook(name string, hook PostStartHookFunc)
 	// that the poststarthook is finished
 	done := make(chan struct{})
 	s.AddHealthzChecks(postStartHookHealthz{name: "poststarthook/" + name, done: done})
+
+	// NOTE: 加入postStartHooks数据结构中, 猜测启动时遍历执行!
 	s.postStartHooks[name] = postStartHookEntry{hook: hook, done: done}
 
 	return nil
@@ -137,6 +140,7 @@ func (s *GenericAPIServer) AddPreShutdownHookOrDie(name string, hook PreShutdown
 }
 
 // RunPostStartHooks runs the PostStartHooks for the server
+// TODO: 猜测被Run()调用
 func (s *GenericAPIServer) RunPostStartHooks(stopCh <-chan struct{}) {
 	s.postStartHookLock.Lock()
 	defer s.postStartHookLock.Unlock()
